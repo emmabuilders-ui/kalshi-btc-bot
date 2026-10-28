@@ -32,6 +32,7 @@ import base64
 import csv
 import gzip
 import hashlib
+import http.client
 import io
 import json
 import os
@@ -92,7 +93,7 @@ def http_get(url: str, params: dict | None = None, min_interval: float = 0.0,
                 time.sleep(1.5)
                 continue
             err = e
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+        except (urllib.error.URLError, http.client.HTTPException, OSError) as e:
             err = e
         delay = min(2 ** attempt, 60)
         print(f"  retry {attempt + 1}/{tries} in {delay}s ({err})", file=sys.stderr)
