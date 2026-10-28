@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download 30 days of BTC 1-second klines and Kalshi KXBTC15M trade history.
+"""Download BTC 1-second klines and Kalshi KXBTC15M trade history.
 
 Produces two ZIPs in --out:
 
@@ -227,6 +227,10 @@ def list_markets(start: date, end: date) -> list[dict]:
     for path, src in sources:
         try:
             for m in _paged(path, "markets", **rng):
+                # Historical results come newest first and ignore the range, so
+                # stop once they are older than the range.
+                if src == "historical" and iso_to_unix(m["close_time"]) <= lo:
+                    break
                 if lo <= iso_to_unix(m["open_time"]) < hi and m["ticker"] not in found:
                     m["_source"] = src
                     found[m["ticker"]] = m
