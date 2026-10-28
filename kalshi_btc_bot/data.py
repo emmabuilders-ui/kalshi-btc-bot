@@ -27,7 +27,8 @@ from .models import Market, Quote
 def to_epoch_seconds(col: pd.Series) -> pd.Series:
     if pd.api.types.is_numeric_dtype(col):
         v = col.astype("float64")
-        v = np.where(v > 1e12, v / 1000.0, v)       # milliseconds -> seconds
+        # Binance daily files switched from milliseconds to microseconds in 2025.
+        v = np.where(v > 1e14, v / 1e6, np.where(v > 1e11, v / 1000.0, v))
         return pd.Series(np.floor(v).astype("int64"), index=col.index)
     dt = pd.to_datetime(col, utc=True)
     return pd.Series(dt.astype("int64") // 10**9, index=col.index)
