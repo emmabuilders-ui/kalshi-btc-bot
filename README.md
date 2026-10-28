@@ -13,7 +13,7 @@ will be added and reviewed separately, after paper trading.
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest                                    # 20 tests
+python -m pytest                                    # 29 tests
 
 # Pipeline test on SYNTHETIC data (its P&L means nothing)
 python -m kalshi_btc_bot synth --out data/synthetic --hours 48
@@ -121,6 +121,63 @@ be meaningful.
 * `summary.csv`, `trades.csv`: per method and per trade (entry and exit times, prices, reasons, P&L)
 * `events.jsonl`: every signal (with indicator values and the reason for any rejection),
   order, fill, trailing-stop activation, exit and settlement, with time remaining
+
+## Futures and ETF mode
+
+This mode runs the same buy signal and the same four exits on instruments whose P&L moves
+one-for-one with price. Presets (`linear.PRESETS`):
+
+| Symbol | Contract | $ per point | Commission per side | Default size | Hours |
+|---|---|---:|---:|---:|---|
+| MNQ | Micro E-mini Nasdaq-100 | 2 | $0.62 | 1 | 24h |
+| MES | Micro E-mini S&P 500 | 5 | $0.62 | 1 | 24h |
+| MBT | CME Micro Bitcoin (0.1 BTC) | 0.1 | $2.50 | 1 | 24h |
+| TQQQ, SQQQ, UPRO, SOXL | 3x ETFs | 1 per share | $0 | 100 shares | 9:30–16:00 ET |
+
+Commissions are typical retail figures, so check your broker's. Any other symbol works if
+you define it in an `[instrument]` section.
+
+```bash
+python -m kalshi_btc_bot synth-linear --symbol MNQ --price 21000 --hours 48 --out data/syn_mnq   # SYNTHETIC
+python -m kalshi_btc_bot backtest-linear --data path/to/price.csv --symbol MNQ --out results/mnq
+python -m kalshi_btc_bot backtest-linear --data path/to/price.csv --symbol TQQQ --allow-short
+```
+
+Data: `price.csv` with columns `timestamp,price[,bid,ask]`, one row per second. Buys
+fill at the ask and sells at the bid, 1 second after each decision. Without bid and ask
+columns, half a tick of spread is assumed on each side.
+
+Differences from Kalshi mode:
+
+* **Hard stop:** entry minus 3 × SD250 at the signal (`hard_stop_sd`), or a fixed
+  `hard_stop_points`. A binary contract caps the loss at the price paid, and these
+  instruments don't.
+* **Time stop:** a trade closes after 900 s (`max_hold_s`), standing in for the 15-minute
+  settlement. "Hold to settlement" becomes "hold until the time stop".
+* **No YES-price filter.** After an entry, new signals are locked out for `lockout_s`
+  (default 900 s), so all four exits trade identical entries.
+* **Shorts (optional, `--allow-short`):** an upper-band breach followed by an MA50/MA250
+  death cross within 120 s. The trailing stop is mirrored: it activates at the lower exit
+  band and exits after 60 s of closes above the middle band.
+* **ETF hours:** ETFs only enter during regular hours, take no new entries in the last
+  15 minutes, and are flattened 60 s before the close. For every instrument, a data gap
+  longer than 5 s resets the indicators and closes open trades at the last price, so
+  overnight and weekend gaps never turn into fake flat prices.
+
+Settings go in a TOML file passed with `--linear-config`:
+
+```toml
+[linear]
+max_hold_s = 900
+hard_stop_sd = 3.0
+allow_short = false
+
+[instrument]          # optional overrides for the preset
+commission_per_side = 0.85
+```
+
+There is no live or paper trading for futures and ETFs yet. That needs a broker
+connection, such as Interactive Brokers or Alpaca.
 
 ## Known limits
 
