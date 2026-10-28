@@ -91,6 +91,25 @@ Indicators use spot. Paper trading defaults to the median of Coinbase, Kraken an
 Bitstamp, which are BRTI constituents. That is closer to BRTI than one venue, but it is
 still not BRTI.
 
+## Downloading 30 days of historical data
+
+`scripts/fetch_30day_data.py` builds two ZIPs on your own machine (standard library
+only, no API key):
+
+```bash
+python scripts/fetch_30day_data.py --start 2026-09-26 --end 2026-10-25 --out data
+```
+
+* `data/BTC_1sec_30days.zip` holds the daily Binance `BTCUSDT-1s-YYYY-MM-DD.zip`
+  files, each checked against Binance's published SHA-256.
+* `data/Kalshi_BTC15M_30days.zip` holds `markets.csv` (ticker, open/close time,
+  strike, YES/NO result, settlement index value) and `trades/YYYY-MM-DD.csv` with
+  every individual execution in each contract.
+
+The Kalshi part makes several thousand paced API calls, so expect it to take a while.
+Re-running resumes from `data/_cache`. Binance 1-second files from 2025 on use
+microsecond timestamps.
+
 ## Data format for backtests
 
 `btc.csv`: one row per second (gaps are forward-filled and counted in the report)
