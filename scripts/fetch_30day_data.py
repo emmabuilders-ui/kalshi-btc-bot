@@ -10,6 +10,9 @@ Produces two ZIPs in --out:
                             (every execution in every contract that opened that
                             UTC day, with YES and NO price, size, taker side)
 
+Real volume is large: a KXBTC15M contract has ~30-60k executions, so a month is
+~100M trades (~110k API pages) and the Kalshi download takes 8-10 hours.
+
 Standard library only, so it runs on Python 3.11+ without installing anything:
 
   python scripts/fetch_30day_data.py --start 2026-09-26 --end 2026-10-25 --out data
@@ -22,14 +25,18 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import hashlib
+import io
 import json
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -40,26 +47,32 @@ UA = {"User-Agent": "kalshi-btc-bot-data-fetch/1.0"}
 
 MARKET_COLS = ["ticker", "event_ticker", "open_time", "close_time", "expiration_time",
                "strike", "strike_type", "floor_strike", "cap_strike", "result",
-               "settlement_value", "expiration_value", "volume", "status", "source"]
+               "settlement_value", "settlement_ts", "expiration_value", "volume", "status",
+               "source"]
 TRADE_COLS = ["ticker", "trade_id", "created_time", "ts_unix", "yes_price", "no_price",
               "count", "taker_side"]
 
 
 # ----------------------------------------------------------------------- http
 _last_call = 0.0
+_pace = threading.Lock()
 
 
 def http_get(url: str, params: dict | None = None, min_interval: float = 0.0,
-             tries: int = 6) -> bytes:
-    """GET with polite pacing and retry/backoff on 429, 5xx and network errors."""
+             tries: int = 8) -> bytes:
+    """GET with polite pacing and retry/backoff on 429, 5xx and network errors.
+
+    Pacing is shared across threads, so min_interval caps the total request rate.
+    """
     global _last_call
     if params:
         url += "?" + urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
     for attempt in range(tries):
-        wait = _last_call + min_interval - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
-        _last_call = time.monotonic()
+        with _pace:
+            wait = _last_call + min_interval - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            _last_call = time.monotonic()
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
                 return r.read()
@@ -71,15 +84,16 @@ def http_get(url: str, params: dict | None = None, min_interval: float = 0.0,
             err = e
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             err = e
-        delay = 2 ** attempt
+        delay = min(2 ** attempt, 60)
         print(f"  retry {attempt + 1}/{tries} in {delay}s ({err})", file=sys.stderr)
         time.sleep(delay)
     raise RuntimeError(f"giving up on {url}")
 
 
 def kalshi(path: str, **params) -> dict:
-    # Kalshi's basic tier allows ~20 reads/s; stay well under it.
-    return json.loads(http_get(KALSHI_API + path, params, min_interval=0.08))
+    # Unauthenticated, /markets/trades tops out near 4 successful reads/s and
+    # answers 429 above that, so pace all threads to ~3.5/s combined.
+    return json.loads(http_get(KALSHI_API + path, params, min_interval=0.28))
 
 
 def days(start: date, end: date):
@@ -156,12 +170,21 @@ def list_markets(start: date, end: date) -> list[dict]:
     """Every KXBTC15M contract that opened between start 00:00 and end 24:00 UTC.
 
     Kalshi moves older settled markets out of /markets into /historical/markets,
-    so query both and de-duplicate by ticker.
+    so query both and de-duplicate by ticker. /historical/markets ignores the
+    close-time filter, so it is skipped when the whole range is after the
+    historical cutoff (otherwise it pages through the series' entire history).
     """
     lo, hi = to_unix(start), to_unix(end + timedelta(days=1))
     rng = dict(series_ticker=SERIES, min_close_ts=lo + 1, max_close_ts=hi + 15 * 60)
+    sources = [("/markets", "live"), ("/historical/markets", "historical")]
+    try:
+        cutoff = iso_to_unix(kalshi("/historical/cutoff")["market_settled_ts"])
+        if lo >= cutoff:
+            sources = sources[:1]
+    except (urllib.error.HTTPError, RuntimeError, KeyError) as e:
+        print(f"  /historical/cutoff unavailable ({e}); querying both", file=sys.stderr)
     found: dict[str, dict] = {}
-    for path, src in (("/markets", "live"), ("/historical/markets", "historical")):
+    for path, src in sources:
         try:
             for m in _paged(path, "markets", **rng):
                 if lo <= iso_to_unix(m["open_time"]) < hi and m["ticker"] not in found:
@@ -182,6 +205,7 @@ def market_row(m: dict) -> dict:
         "strike_type": m.get("strike_type", ""), "floor_strike": m.get("floor_strike", ""),
         "cap_strike": m.get("cap_strike", ""), "result": (m.get("result") or "").upper(),
         "settlement_value": _price(m, "settlement_value"),
+        "settlement_ts": m.get("settlement_ts", ""),
         "expiration_value": m.get("expiration_value", ""),
         "volume": m.get("volume_fp", m.get("volume", "")), "status": m.get("status", ""),
         "source": m.get("_source", ""),
@@ -212,7 +236,19 @@ def trade_row(t: dict) -> dict:
     }
 
 
-def fetch_kalshi(start: date, end: date, out: Path, cache: Path) -> Path:
+def _fetch_one(m: dict, f: Path) -> int:
+    rows = sorted((trade_row(t) for t in fetch_trades(m["ticker"], m.get("_source", ""))),
+                  key=lambda r: (r["ts_unix"], r["trade_id"]))
+    tmp = f.with_suffix(".part")
+    with gzip.open(tmp, "wt", newline="") as g:
+        w = csv.DictWriter(g, fieldnames=TRADE_COLS, lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+    tmp.rename(f)
+    return len(rows)
+
+
+def fetch_kalshi(start: date, end: date, out: Path, cache: Path, workers: int = 2) -> Path:
     cache = cache / "kalshi"
     (cache / "trades").mkdir(parents=True, exist_ok=True)
     mcache = cache / "markets.json"
@@ -226,28 +262,33 @@ def fetch_kalshi(start: date, end: date, out: Path, cache: Path) -> Path:
         mcache.write_text(json.dumps(markets))
     print(f"kalshi: {len(markets)} contracts")
 
+    # Per-contract trades are cached as gzipped CSV; a month is ~100M rows.
+    path = {m["ticker"]: cache / "trades" / f"{m['ticker']}.csv.gz" for m in markets}
+    todo = [m for m in markets if not path[m["ticker"]].exists()]
+    done = len(markets) - len(todo)
+    with ThreadPoolExecutor(workers) as ex:
+        for m, n in zip(todo, ex.map(lambda m: _fetch_one(m, path[m["ticker"]]), todo)):
+            done += 1
+            print(f"  [{done}/{len(markets)}] {m['ticker']}: {n} trades", flush=True)
+
     by_day: dict[str, list[Path]] = {}
-    for i, m in enumerate(markets, 1):
-        tk = m["ticker"]
-        f = cache / "trades" / f"{tk}.json"
-        if not f.exists():
-            rows = sorted((trade_row(t) for t in fetch_trades(tk, m.get("_source", ""))),
-                          key=lambda r: (r["ts_unix"], r["trade_id"]))
-            tmp = f.with_suffix(".part")
-            tmp.write_text(json.dumps(rows))
-            tmp.rename(f)
-            print(f"  [{i}/{len(markets)}] {tk}: {len(rows)} trades")
+    for m in markets:
         day = datetime.fromtimestamp(iso_to_unix(m["open_time"]), timezone.utc).date().isoformat()
-        by_day.setdefault(day, []).append(f)
+        by_day.setdefault(day, []).append(path[m["ticker"]])
 
     zpath = out / "Kalshi_BTC15M_30days.zip"
     n_trades = 0
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("markets.csv", _csv(MARKET_COLS, [market_row(m) for m in markets]))
         for day, fs in sorted(by_day.items()):
-            rows = [r for f in fs for r in json.loads(f.read_text())]
-            n_trades += len(rows)
-            z.writestr(f"trades/{day}.csv", _csv(TRADE_COLS, rows))
+            with z.open(f"trades/{day}.csv", "w", force_zip64=True) as dst:
+                dst.write((",".join(TRADE_COLS) + "\n").encode())
+                for f in fs:
+                    with gzip.open(f, "rb") as g:
+                        g.readline()                       # per-contract header
+                        for line in g:
+                            dst.write(line)
+                            n_trades += 1
         z.writestr("README.txt", KALSHI_README.format(
             start=start, end=end, n=len(markets), t=n_trades,
             made=datetime.now(timezone.utc).isoformat(timespec="seconds")))
@@ -256,7 +297,6 @@ def fetch_kalshi(start: date, end: date, out: Path, cache: Path) -> Path:
 
 
 def _csv(cols, rows) -> str:
-    import io
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore", lineterminator="\n")
     w.writeheader()
@@ -272,11 +312,12 @@ markets.csv   one row per contract
                     (floor_strike for "above" contracts)
   result            YES or NO
   expiration_value  the settlement BTC index value Kalshi published
+  settlement_ts     when Kalshi settled the contract
   source            live = /markets, historical = /historical/markets
 
 trades/<day>.csv  every individual execution, grouped by the day the contract opened
   yes_price / no_price  in dollars (yes_price + no_price = 1.00)
-  count                 contracts traded
+  count                 contracts traded (fractional sizes are real; Kalshi allows them)
   taker_side            which side crossed the spread (yes or no)
 Each execution has a YES price, so every row is usable as a YES trade print.
 """
@@ -289,13 +330,14 @@ def main() -> None:
     p.add_argument("--end", default="2026-10-25", type=date.fromisoformat, help="inclusive")
     p.add_argument("--out", default="data", type=Path)
     p.add_argument("--only", choices=["btc", "kalshi"])
+    p.add_argument("--workers", default=2, type=int, help="parallel Kalshi contract downloads")
     a = p.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
     cache = a.out / "_cache"
     if a.only != "kalshi":
         print("wrote", fetch_binance(a.start, a.end, a.out, cache))
     if a.only != "btc":
-        print("wrote", fetch_kalshi(a.start, a.end, a.out, cache))
+        print("wrote", fetch_kalshi(a.start, a.end, a.out, cache, a.workers))
 
 
 if __name__ == "__main__":
