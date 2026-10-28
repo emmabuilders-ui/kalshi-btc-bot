@@ -11,24 +11,30 @@ Produces two ZIPs in --out:
                             UTC day, with YES and NO price, size, taker side)
 
 Real volume is large: a KXBTC15M contract has ~30-60k executions, so a month is
-~100M trades (~110k API pages) and the Kalshi download takes 8-10 hours.
+~100M trades (~110k API pages): ~2-3 hours with an API key, ~30 without.
 
 Standard library only, so it runs on Python 3.11+ without installing anything:
 
   python scripts/fetch_30day_data.py --start 2026-09-26 --end 2026-10-25 --out data
 
 Re-running resumes: finished downloads are cached in --out/_cache and skipped.
-Read-only; uses only public endpoints, no Kalshi API key needed.
+Read-only; uses only public endpoints, no Kalshi API key needed. Unauthenticated
+requests are throttled to ~1/s, though. With a (read-only) key in
+KALSHI_API_KEY_ID and its PEM private key in KALSHI_PRIVATE_KEY, requests are
+signed and run at Kalshi's basic-tier rate, ~15x faster. Signing needs the
+`cryptography` package.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import gzip
 import hashlib
 import io
 import json
+import os
 import sys
 import threading
 import time
@@ -59,7 +65,7 @@ _pace = threading.Lock()
 
 
 def http_get(url: str, params: dict | None = None, min_interval: float = 0.0,
-             tries: int = 8) -> bytes:
+             tries: int = 30, sign=None) -> bytes:
     """GET with polite pacing and retry/backoff on 429, 5xx and network errors.
 
     Pacing is shared across threads, so min_interval caps the total request rate.
@@ -73,14 +79,18 @@ def http_get(url: str, params: dict | None = None, min_interval: float = 0.0,
             if wait > 0:
                 time.sleep(wait)
             _last_call = time.monotonic()
+        headers = {**UA, **sign()} if sign else UA
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as r:
                 return r.read()
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 raise
             if e.code != 429 and e.code < 500:
                 raise RuntimeError(f"HTTP {e.code} for {url}: {e.read()[:300]!r}") from e
+            if e.code == 429:              # throttled: a short pause is enough
+                time.sleep(1.5)
+                continue
             err = e
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             err = e
@@ -90,10 +100,39 @@ def http_get(url: str, params: dict | None = None, min_interval: float = 0.0,
     raise RuntimeError(f"giving up on {url}")
 
 
+def _signer():
+    key_id, pem = os.environ.get("KALSHI_API_KEY_ID"), os.environ.get("KALSHI_PRIVATE_KEY")
+    if not (key_id and pem):
+        return None
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+    key = serialization.load_pem_private_key(pem.replace("\\n", "\n").encode(), password=None)
+
+    def headers_for(path: str):
+        def sign() -> dict:
+            ts = str(int(time.time() * 1000))
+            sig = key.sign((ts + "GET" + path).encode(),
+                           padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
+                                       salt_length=padding.PSS.DIGEST_LENGTH),
+                           hashes.SHA256())
+            return {"KALSHI-ACCESS-KEY": key_id, "KALSHI-ACCESS-TIMESTAMP": ts,
+                    "KALSHI-ACCESS-SIGNATURE": base64.b64encode(sig).decode()}
+        return sign
+    return headers_for
+
+
+_SIGNER = _signer()
+
+
 def kalshi(path: str, **params) -> dict:
-    # Unauthenticated, /markets/trades tops out near 4 successful reads/s and
-    # answers 429 above that, so pace all threads to ~3.5/s combined.
-    return json.loads(http_get(KALSHI_API + path, params, min_interval=0.28))
+    # Unauthenticated, /markets/trades allows short bursts of ~4 reads/s but only
+    # ~1.2/s sustained; faster just earns 429s. Signed requests get the basic
+    # tier's 20 reads/s; ~15/s leaves headroom.
+    url = KALSHI_API + path
+    if _SIGNER:
+        sign = _SIGNER(urllib.parse.urlparse(url).path)
+        return json.loads(http_get(url, params, min_interval=0.065, sign=sign))
+    return json.loads(http_get(url, params, min_interval=0.7))
 
 
 def days(start: date, end: date):
@@ -248,7 +287,7 @@ def _fetch_one(m: dict, f: Path) -> int:
     return len(rows)
 
 
-def fetch_kalshi(start: date, end: date, out: Path, cache: Path, workers: int = 2) -> Path:
+def fetch_kalshi(start: date, end: date, out: Path, cache: Path, workers: int = 4) -> Path:
     cache = cache / "kalshi"
     (cache / "trades").mkdir(parents=True, exist_ok=True)
     mcache = cache / "markets.json"
@@ -330,7 +369,7 @@ def main() -> None:
     p.add_argument("--end", default="2026-10-25", type=date.fromisoformat, help="inclusive")
     p.add_argument("--out", default="data", type=Path)
     p.add_argument("--only", choices=["btc", "kalshi"])
-    p.add_argument("--workers", default=2, type=int, help="parallel Kalshi contract downloads")
+    p.add_argument("--workers", default=4, type=int, help="parallel Kalshi contract downloads")
     a = p.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
     cache = a.out / "_cache"
