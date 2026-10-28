@@ -204,8 +204,11 @@ class TrailingStop:
       the middle band resets the timer.
     """
 
-    def __init__(self, method: ExitMethod):
+    def __init__(self, method: ExitMethod, side: str = "long"):
+        if side not in ("long", "short"):
+            raise ValueError(side)
         self.method = method
+        self.side = side      # "short" mirrors the rules: activate at the lower band, exit above middle
         self.activated = not method.require_activation
         self.activated_t: int | None = None
         self.seconds_below = 0
@@ -213,12 +216,15 @@ class TrailingStop:
     def update(self, snap: ExitBandSnapshot) -> bool:
         if snap.middle is None:
             return False
-        if not self.activated and snap.upper is not None and snap.price >= snap.upper:
+        if not self.activated and snap.upper is not None and (
+                snap.price >= snap.upper if self.side == "long" else snap.price <= snap.lower):
             self.activated = True
             self.activated_t = snap.t
         if not self.activated or not snap.candle_closed:
             return False
-        if snap.candle_close < snap.middle:
+        against = (snap.candle_close < snap.middle if self.side == "long"
+                   else snap.candle_close > snap.middle)
+        if against:
             self.seconds_below += self.method.candle_seconds
         else:
             self.seconds_below = 0
