@@ -1,0 +1,12 @@
+[project]
+name = "kalshi-btc-bot"
+version = "0.1.0"
+description = "Kalshi BTC 15-minute indicator, exit-method backtester and paper trader"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "pandas>=2.0", "requests>=2.31"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
