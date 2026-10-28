@@ -310,15 +310,23 @@ def fetch_kalshi(start: date, end: date, out: Path, cache: Path, workers: int = 
             done += 1
             print(f"  [{done}/{len(markets)}] {m['ticker']}: {n} trades", flush=True)
 
-    by_day: dict[str, list[Path]] = {}
-    for m in markets:
-        day = datetime.fromtimestamp(iso_to_unix(m["open_time"]), timezone.utc).date().isoformat()
-        by_day.setdefault(day, []).append(path[m["ticker"]])
+    return write_kalshi_zip(markets, path, out / "Kalshi_BTC15M_30days.zip", start, end)
 
-    zpath = out / "Kalshi_BTC15M_30days.zip"
+
+def write_kalshi_zip(markets: list[dict], path: dict[str, Path], zpath: Path,
+                     start: date, end: date) -> Path:
+    """Pack cached contracts that opened between start and end (UTC, inclusive)."""
+    by_day: dict[str, list[Path]] = {}
+    chosen = []
+    for m in markets:
+        day = datetime.fromtimestamp(iso_to_unix(m["open_time"]), timezone.utc).date()
+        if start <= day <= end:
+            chosen.append(m)
+            by_day.setdefault(day.isoformat(), []).append(path[m["ticker"]])
+
     n_trades = 0
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("markets.csv", _csv(MARKET_COLS, [market_row(m) for m in markets]))
+        z.writestr("markets.csv", _csv(MARKET_COLS, [market_row(m) for m in chosen]))
         for day, fs in sorted(by_day.items()):
             with z.open(f"trades/{day}.csv", "w", force_zip64=True) as dst:
                 dst.write((",".join(TRADE_COLS) + "\n").encode())
@@ -329,9 +337,9 @@ def fetch_kalshi(start: date, end: date, out: Path, cache: Path, workers: int = 
                             dst.write(line)
                             n_trades += 1
         z.writestr("README.txt", KALSHI_README.format(
-            start=start, end=end, n=len(markets), t=n_trades,
+            start=start, end=end, n=len(chosen), t=n_trades,
             made=datetime.now(timezone.utc).isoformat(timespec="seconds")))
-    print(f"kalshi: {n_trades} trades written")
+    print(f"kalshi: {n_trades} trades written to {zpath.name}")
     return zpath
 
 
