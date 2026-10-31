@@ -36,13 +36,13 @@ GH=$(cat "$CONF/github_token")
 
 echo "== Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq git python3 python3-venv python3-pip >/dev/null
+[ -n "${SKIP_APT:-}" ] || apt-get update -qq
+[ -n "${SKIP_APT:-}" ] || apt-get install -y -qq git python3 python3-venv python3-pip >/dev/null
 
 id "$USER_" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$USER_"
 chown -R "$USER_" "$CONF"; chmod 600 "$CONF"/*
 git config --global --add safe.directory "*"
-URL="https://x-access-token:${GH}@github.com/${REPO}.git"
+URL="${REPO_URL:-https://x-access-token:${GH}@github.com/${REPO}.git}"
 
 echo "== Getting the code ($BRANCH)"
 if [ -d "$APP/.git" ]; then

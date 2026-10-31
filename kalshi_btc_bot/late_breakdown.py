@@ -337,13 +337,18 @@ class LateBreakdownPaper:
             w.writerow(row)
 
     def _log_price(self, t: int, raw: float | None, quotes: dict):
-        day = datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%d")
-        if day != self._price_day:
+        """1-second prices, one gzip file per UTC hour (closed at the hour, so each is complete)."""
+        hour = datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%d/%H")
+        if hour != self._price_day:
             if self._price_fh:
                 self._price_fh.close()
-            (self.out / "prices").mkdir(exist_ok=True)
-            self._price_fh = gzip.open(self.out / "prices" / f"{day}.csv.gz", "at")
-            self._price_day = day
+            path = self.out / "prices" / f"{hour}.csv.gz"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            new = not path.exists()
+            self._price_fh = gzip.open(path, "at")
+            if new:
+                self._price_fh.write("unix_s,proxy_raw,proxy_offset," + ",".join(EXCHANGES) + "\n")
+            self._price_day = hour
         q = ",".join("" if quotes.get(n) is None else f"{quotes[n]:.2f}" for n in EXCHANGES)
         self._price_fh.write(f"{t},{'' if raw is None else f'{raw:.2f}'},{self.series.bias:.2f},{q}\n")
 
@@ -366,11 +371,12 @@ class LateBreakdownPaper:
         if not self.push_logs or now - self._last_push < 3600:
             return
         self._last_push = now
-        if self._price_fh:
-            self._price_fh.flush()
         try:
             git = ["git", "-C", str(self.out)]
             subprocess.run(git + ["add", "-A"], check=True, capture_output=True, timeout=60)
+            if self._price_day:  # the open hour's file is still being written
+                subprocess.run(git + ["reset", "-q", "--", f"prices/{self._price_day}.csv.gz"],
+                               capture_output=True, timeout=60)
             subprocess.run(git + ["commit", "-qm", f"paper log {datetime.now(timezone.utc):%Y-%m-%d %H:%M}"],
                            capture_output=True, timeout=60)
             subprocess.run(git + ["push", "-q", "origin", "HEAD"], check=True, capture_output=True, timeout=120)
