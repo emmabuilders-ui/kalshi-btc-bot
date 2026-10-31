@@ -42,6 +42,28 @@ A paper session also records `btc.csv`, `quotes.csv` and `markets.csv` into
 `runs/paper/recorded_data/`. You can backtest that folder later, so a few days of
 paper trading builds a real executable-price dataset.
 
+### Late-breakdown NO paper trader
+
+The one rule that held up on data it had never seen (Dec 2025 - Apr 2026). It buys NO when
+BRTI first breaks $5 below the hard bottom or the previous 15-minute low with 1-2 minutes
+left, NO is the favourite, the 15m/60m/24h moving averages are not already stacked down,
+and NO costs 96c or less. Paper only: no orders are sent.
+
+```bash
+export KALSHI_KEY_ID=...            # read-only key, used for BRTI history
+export KALSHI_KEY_FILE=/path/key.pem
+python -m kalshi_btc_bot paper-breakdown --out runs/breakdown --stake 20
+```
+
+It writes `sessions.csv` (levels per session), `signals.csv` (every break it judged, with the
+order book), `trades.csv` (paper fills walked through the real book, Kalshi fees, settlement),
+`prices/` (1-second prices) and `status.json`. Kalshi's BRTI feed lags several minutes, so
+live prices are the mean of Coinbase, Kraken, Bitstamp and Gemini mid prices minus their
+measured offset to BRTI; it waits for that offset before trading.
+
+Server install (Ubuntu): `deploy/setup.sh`. It installs a service that restarts on reboot and
+pushes the logs to the `paper-logs` branch every hour. `kbot status | log | update`.
+
 ## How the spec maps to the code
 
 | Spec section | Code |
