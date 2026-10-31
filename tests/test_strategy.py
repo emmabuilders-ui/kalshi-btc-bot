@@ -238,3 +238,14 @@ def test_backtest_entries_identical_across_exit_methods(tmp_path):
     assert by[("hold_to_settlement", "executable")]["early_exits"] == 0
     n = {r["entries"] for r in rows if r["pricing"] == "executable"}
     assert len(n) == 1 and n.pop() > 0
+
+
+def test_recorder_parse_book_best_levels():
+    from kalshi_btc_bot.recorder import parse_book
+    j = {"orderbook_fp": {"yes_dollars": [["0.46", "10"], ["0.50", "5"]],
+                          "no_dollars": [["0.45", "3"], ["0.49", "7"]]}}
+    b = parse_book(j)
+    assert b["yes_bid"] == 0.50 and b["yes_ask"] == 0.51
+    assert b["yes_bids"][0] == [0.50, 5.0] and b["no_bids"][0] == [0.49, 7.0]
+    old = parse_book({"orderbook": {"yes": [[46, 10]], "no": [[49, 7]]}})
+    assert old["yes_bid"] == 0.46 and old["yes_ask"] == 0.51

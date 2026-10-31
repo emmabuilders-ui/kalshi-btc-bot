@@ -26,6 +26,18 @@ python -m kalshi_btc_bot backtest --data path/to/folder --out results/real
 python -m kalshi_btc_bot paper --out runs/paper --minutes 240
 ```
 
+### Order-book recorder
+
+Kalshi keeps no order-book history, so record it yourself. This runs read-only and writes one
+line per second (open contract, top 10 book levels, best YES bid/ask, Coinbase/Kraken/Bitstamp/Binance
+BTC prices) to `data/recordings/<UTC date>/<hour>.jsonl.gz`:
+
+```bash
+python -m kalshi_btc_bot record --out data/recordings            # runs until stopped
+```
+
+Run it on an always-on machine. It uses about 1 request per second to Kalshi's public API.
+
 A paper session also records `btc.csv`, `quotes.csv` and `markets.csv` into
 `runs/paper/recorded_data/`. You can backtest that folder later, so a few days of
 paper trading builds a real executable-price dataset.
