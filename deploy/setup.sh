@@ -2,6 +2,7 @@
 # One-time install of the PAPER traders on a fresh Ubuntu 22.04/24.04 server:
 #   kalshi-paper  late-breakdown rule on the 15-minute markets (logs: paper-logs branch)
 #   kalshi-range  hourly Bitcoin range rule (logs: paper-logs-range branch)
+#   kalshi-fastpush  fast-push level breaks on the 15-minute markets (logs: paper-logs-fastpush branch)
 # No orders are ever sent. Run as root:  bash setup.sh
 # It asks for: a GitHub token (read/write to this repo), the Kalshi API key ID, and the
 # Kalshi private key (paste it). Re-running it is safe: it updates the code and restarts.
@@ -14,6 +15,8 @@ APP=/opt/kalshi-btc-bot
 LOGS=/opt/kalshi-logs
 RANGE_LOGS=/opt/kalshi-logs-range
 RANGE_BRANCH="paper-logs-range"
+FP_LOGS=/opt/kalshi-logs-fastpush
+FP_BRANCH="paper-logs-fastpush"
 CONF=/etc/kalshi-bot
 USER_=kbot
 
@@ -101,6 +104,27 @@ git -C "$RANGE_LOGS" config push.default current
 chown -R "$USER_" "$RANGE_LOGS"
 sudo -u "$USER_" git -C "$RANGE_LOGS" push -q -u origin "$RANGE_BRANCH"
 
+echo "== Setting up the fast-push bot log folder (pushed to the $FP_BRANCH branch every hour)"
+if [ ! -d "$FP_LOGS/.git" ]; then
+  git init -q "$FP_LOGS"
+  git -C "$FP_LOGS" remote add origin "$URL"
+  if git -C "$FP_LOGS" fetch -q origin "$FP_BRANCH" 2>/dev/null; then
+    git -C "$FP_LOGS" checkout -q -B "$FP_BRANCH" "origin/$FP_BRANCH"
+  else
+    git -C "$FP_LOGS" checkout -q --orphan "$FP_BRANCH"
+    echo "Fast-push 15-minute paper-trading logs from the server. No real orders." > "$FP_LOGS/README.md"
+    git -C "$FP_LOGS" add README.md
+    git -C "$FP_LOGS" -c user.name=kbot -c user.email=kbot@localhost commit -qm "start fast-push paper logs"
+  fi
+else
+  git -C "$FP_LOGS" remote set-url origin "$URL"
+fi
+git -C "$FP_LOGS" config user.name "kalshi paper bot"
+git -C "$FP_LOGS" config user.email "kbot@localhost"
+git -C "$FP_LOGS" config push.default current
+chown -R "$USER_" "$FP_LOGS"
+sudo -u "$USER_" git -C "$FP_LOGS" push -q -u origin "$FP_BRANCH"
+
 echo "== Installing the service"
 cat > /etc/systemd/system/kalshi-paper.service <<EOF
 [Unit]
@@ -136,22 +160,40 @@ RestartSec=30
 [Install]
 WantedBy=multi-user.target
 EOF
+cat > /etc/systemd/system/kalshi-fastpush.service <<EOF
+[Unit]
+Description=Kalshi fast-push level-break PAPER trader (no real orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=$USER_
+EnvironmentFile=$CONF/env
+WorkingDirectory=$FP_LOGS
+ExecStart=$APP/.venv/bin/python -m kalshi_btc_bot paper-fastpush --out $FP_LOGS/fastpush --push-logs
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
 systemctl daemon-reload
-systemctl enable -q kalshi-paper kalshi-range
-systemctl restart kalshi-paper kalshi-range
+systemctl enable -q kalshi-paper kalshi-range kalshi-fastpush
+systemctl restart kalshi-paper kalshi-range kalshi-fastpush
 
 cat > /usr/local/bin/kbot <<'EOF'
 #!/usr/bin/env bash
 # kbot status | log | update | stop | start | touch COIN TF BARS [TARGET]
 case "${1:-status}" in
-  status) for u in kalshi-paper kalshi-range; do systemctl --no-pager status $u | head -3; done
+  status) for u in kalshi-paper kalshi-range kalshi-fastpush; do systemctl --no-pager status $u | head -3; done
           echo "-- 15-min breakdown bot"; cat /opt/kalshi-logs/breakdown/status.json 2>/dev/null
-          echo; echo "-- hourly range bot"; cat /opt/kalshi-logs-range/range/status.json 2>/dev/null ;;
-  log)    journalctl -u kalshi-paper -n 25 --no-pager; journalctl -u kalshi-range -n 25 --no-pager ;;
+          echo; echo "-- hourly range bot"; cat /opt/kalshi-logs-range/range/status.json 2>/dev/null
+          echo; echo "-- fast-push bot"; cat /opt/kalshi-logs-fastpush/fastpush/status.json 2>/dev/null ;;
+  log)    for u in kalshi-paper kalshi-range kalshi-fastpush; do journalctl -u $u -n 20 --no-pager; done ;;
   update) curl -fsSL -H "Authorization: token $(cat /etc/kalshi-bot/github_token)" \
             "https://raw.githubusercontent.com/emmabuilders-ui/kalshi-btc-bot/${BRANCH:-main}/deploy/setup.sh" | bash ;;
-  stop)   systemctl stop kalshi-paper kalshi-range ;;
-  start)  systemctl start kalshi-paper kalshi-range ;;
+  stop)   systemctl stop kalshi-paper kalshi-range kalshi-fastpush ;;
+  start)  systemctl start kalshi-paper kalshi-range kalshi-fastpush ;;
   touch)  shift; /opt/kalshi-btc-bot/.venv/bin/python -m kalshi_btc_bot touch "$@" ;;
   *) echo "usage: kbot status|log|update|stop|start|touch COIN TF BARS [TARGET]" ;;
 esac
@@ -162,6 +204,7 @@ sleep 20
 echo
 journalctl -u kalshi-paper -n 8 --no-pager || true
 journalctl -u kalshi-range -n 8 --no-pager || true
+journalctl -u kalshi-fastpush -n 8 --no-pager || true
 echo
-echo "Done. Both paper traders are running and restart by themselves after a reboot."
+echo "Done. All three paper traders are running and restart by themselves after a reboot."
 echo "Commands:  kbot status   kbot log   kbot update   kbot touch BTC 1h 6 +1%"

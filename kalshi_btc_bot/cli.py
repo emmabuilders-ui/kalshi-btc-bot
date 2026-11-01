@@ -49,6 +49,12 @@ def main(argv=None) -> None:
     rp.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     rp.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    fp = sub.add_parser("paper-fastpush", help="paper trade fast-push level breaks on the 15-min markets (no orders are sent)")
+    fp.add_argument("--out", default="runs/fastpush")
+    fp.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
+    fp.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    fp.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
     t.add_argument("tf", choices=["1m", "5m", "15m", "1h", "4h"])
@@ -95,6 +101,9 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-range":
         from .range_paper import from_env as range_env
         range_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-fastpush":
+        from .fast_push import from_env as fp_env
+        fp_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)
