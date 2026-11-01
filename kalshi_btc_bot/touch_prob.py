@@ -84,6 +84,8 @@ def touch_probability(tf: str, vs: VolState, target_price: float, bars: int) -> 
     x = [lz, zc, v, v * lz, lw, lw * lz, lw * v, direction, trend]
     b0, w = MODELS[tf]
     p = 1.0 / (1.0 + math.exp(-(b0 + sum(a * b for a, b in zip(w, x)))))
+    if z < 0.25:  # very close targets: blend toward certain instead of flattening
+        p = 1.0 - (1.0 - p) * (z / 0.25)
     return TouchResult(direction, target_price, 100 * (target_price / vs.price - 1), z, p,
                        outside_fit=not Z_RANGE[0] <= z <= Z_RANGE[1])
 
