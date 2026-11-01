@@ -74,3 +74,30 @@ def test_step_buys_no_on_late_break_and_settles(tmp_path):
     bot.settle(o + 1000)
     rows = (tmp_path / "trades.csv").read_text().splitlines()
     assert len(rows) == 2 and ",no,1," in rows[1]
+
+
+def test_step_buys_yes_on_late_breakout(tmp_path):
+    from kalshi_btc_bot.late_breakdown import LateBreakdownPaper, Session
+
+    class FakeKalshi:
+        key = None
+        def orderbook(self, ticker):
+            return {"yes_bids": [[0.70, 500.0]], "no_bids": [[0.20, 500.0]]}  # YES ask 0.80
+        def result(self, ticker):
+            return "yes"
+
+    bot = LateBreakdownPaper(tmp_path)
+    bot.k = FakeKalshi()
+    o = 1_000_000
+    for t in range(o - 90000, o):  # falling day, so the MA stack is not pointing up
+        bot.series.brti[t] = 1100.0 - 100.0 * (t - o + 90000) / 90000
+    bot.session = Session("T2", strike=1000.0, open_ts=o, close_ts=o + 900, s0=1000.0,
+                          levels={"hard_top": 1010.0})
+    for sec in range(0, 790):
+        price = 1000.0 if sec < 778 else 1016.0
+        bot.series.brti[o + sec] = price
+        bot.step(o + sec, price)
+    assert len(bot.unsettled) == 1 and bot.unsettled[0]["side"] == "YES"
+    assert bot.unsettled[0]["avg_price"] == 0.8 and bot.unsettled[0]["contracts"] == 25
+    bot.settle(o + 1000)
+    assert ",yes,1," in (tmp_path / "trades.csv").read_text().splitlines()[1]

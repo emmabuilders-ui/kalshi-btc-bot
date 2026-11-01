@@ -9,9 +9,13 @@ The rule (locked 2026-10-31 and tested on Dec 2025 - Apr 2026 data it had never 
   - previous 15-minute low, if it is more than $10 below the price at open.
 * Trigger: the FIRST time BRTI trades $5 below one of those levels, the entry is the next
   5-second mark. It counts only if that entry is 60-179 s before close.
-* Buy NO only if NO is the favourite (BRTI below the strike) and the MA stack is not
+* Buy NO (at any price up to the cap) only if the MA stack is not
   already pointing down (skip if price < SMA15m < SMA60m < SMA24h).
 * NO price cap 96c (the edge sits below 97c).
+
+Second, separately logged line (added 2026-11-01, weaker evidence): the YES mirror. BRTI first
+breaks $5 ABOVE the hard top or previous 15-minute high with 1-2 min left, MA stack not already
+pointing up, YES priced 58-92c. Each side trades at most once per session.
 
 Prices are the real BRTI from Kalshi's CF Benchmarks passthrough (/cfbenchmarks/values,
 about 1 s behind, needs an API key). If that feed stalls, the bot falls back to the mean of
@@ -92,7 +96,10 @@ def hard_levels(b: np.ndarray, o: int) -> np.ndarray:
 
 
 def session_levels(b: np.ndarray, o: int) -> dict[str, float]:
-    """Breakdown levels for a session opening at index o of b (b[o-1] = last price before open)."""
+    """Levels for a session opening at index o of b (b[o-1] = last price before open).
+
+    Bottoms ("hard", "15min") are for the NO breakdown; tops ("hard_top", "15min_high") for
+    the YES breakout. Each must be more than $10 from the price at open."""
     s0 = b[o - 1]
     out = {}
     hl = hard_levels(b, o)
@@ -102,7 +109,18 @@ def session_levels(b: np.ndarray, o: int) -> dict[str, float]:
     low15 = float(np.min(b[o - SESSION:o]))
     if s0 - low15 > GAP:
         out["15min"] = low15
+    above = hl[hl > s0 + GAP]
+    if len(above):
+        out["hard_top"] = float(above.min())
+    high15 = float(np.max(b[o - SESSION:o]))
+    if high15 - s0 > GAP:
+        out["15min_high"] = high15
     return out
+
+
+def level_side(name: str) -> str:
+    """Breaks below bottoms buy NO; breaks above tops buy YES."""
+    return "yes" if name in ("hard_top", "15min_high") else "no"
 
 
 def ma_stack(b: np.ndarray, i: int) -> str:
@@ -122,14 +140,15 @@ def kalshi_fee(contracts: int, price: float) -> float:
 
 
 def fill_no(yes_bids: list[list[float]], stake: float, max_price: float):
-    """Walk the book to buy NO for about `stake` dollars, paying at most max_price per contract.
+    """Walk the book to buy one side for about `stake` dollars, paying at most max_price.
 
-    Buying NO takes YES bids: a YES bid at y fills NO at 1 - y. Returns (contracts, avg price).
+    Buying NO takes YES bids (a YES bid at y fills NO at 1 - y); buying YES takes NO bids the
+    same way, so pass the other side's bids. Returns (contracts, avg price).
     """
     best = 1 - yes_bids[0][0] if yes_bids else None
     if best is None or best > max_price:
         return 0, best
-    want = int(stake // best)
+    want = int(stake / best + 1e-9)
     got, cost = 0, 0.0
     for y, q in sorted(yes_bids, reverse=True):
         p = round(1 - y, 4)
@@ -310,16 +329,18 @@ class Session:
     levels: dict
     broken: dict = field(default_factory=dict)  # level name -> entry second (te)
     checked: set = field(default_factory=set)   # levels whose break has been evaluated
-    done: bool = False                          # a paper trade was taken this session
+    done: set = field(default_factory=set)      # sides ("no"/"yes") already paper-traded
     live: bool = True                           # False: bot was not calibrated at the open
 
 
 class LateBreakdownPaper:
     def __init__(self, out: str | Path, stake: float = 20.0, max_price: float = 0.96,
-                 key_id: str | None = None, key_path: str | None = None, push_logs: bool = False):
+                 key_id: str | None = None, key_path: str | None = None, push_logs: bool = False,
+                 yes_range: tuple[float, float] = (0.58, 0.92)):
         self.out = Path(out)
         self.out.mkdir(parents=True, exist_ok=True)
         self.stake, self.max_price = stake, max_price
+        self.yes_range = yes_range
         self.k = KalshiClient(key_id, key_path)
         self.px = ExchangeProxy()
         self.series = Series()
@@ -339,6 +360,11 @@ class LateBreakdownPaper:
     # ---------------------------------------------------------------- logging helpers
     def _append(self, name: str, row: dict):
         path = self.out / name
+        if path.exists():
+            with path.open() as f:
+                header = f.readline().strip()
+            if header != ",".join(row):  # columns changed: keep the old file aside
+                path.rename(path.with_suffix(f".{int(time.time())}.csv"))
         new = not path.exists()
         with path.open("a", newline="") as f:
             w = csv.DictWriter(f, fieldnames=list(row))
@@ -444,6 +470,8 @@ class LateBreakdownPaper:
                                       "price_at_open": round(s.s0, 2),
                                       "hard_bottom": round(lv["hard"], 2) if "hard" in lv else "",
                                       "prev15_low": round(lv["15min"], 2) if "15min" in lv else "",
+                                      "hard_top": round(lv["hard_top"], 2) if "hard_top" in lv else "",
+                                      "prev15_high": round(lv["15min_high"], 2) if "15min_high" in lv else "",
                                       "live": int(s.live), "proxy_bias": round(self.series.bias, 2)})
         return s
 
@@ -453,59 +481,63 @@ class LateBreakdownPaper:
             return
         sec = now - s.open_ts
         for name, lev in s.levels.items():
-            if name not in s.broken and lev - price >= BREAK:
+            gone = (price - lev) if level_side(name) == "yes" else (lev - price)
+            if name not in s.broken and gone >= BREAK:
                 s.broken[name] = (sec // 5 + 1) * 5
                 log.info("%s: %s level %.2f broken at %ds (price %.2f)", s.ticker, name, lev, sec, price)
-        due = [n for n, te in s.broken.items() if n not in s.checked and sec >= te]
-        if s.done or not due:
-            return
-        name = min(due, key=s.broken.get)
-        s.checked.update(due)  # each level's first break is judged once, at its entry time
+        for side in ("no", "yes"):
+            due = [n for n, te in s.broken.items()
+                   if level_side(n) == side and n not in s.checked and sec >= te]
+            if due and side not in s.done:
+                name = min(due, key=s.broken.get)
+                s.checked.update(due)  # each level's first break is judged once, at its entry time
+                self.decide(s, now, name, side)
+
+    def decide(self, s: Session, now: int, name: str, side: str):
         te = s.broken[name]
         left = SESSION - te
         b = self.series.array(now - 86400 - 1, now)
         S = float(b[-1])
         stack = ma_stack(b, len(b) - 1)
-        row = {"time_utc": _iso(now), "ticker": s.ticker, "level": name, "level_price": round(s.levels[name], 2),
-               "secs_left": left, "price": round(S, 2), "strike": s.strike, "stack": stack,
-               "proxy_bias": round(self.series.bias, 2)}
+        lo, hi = (0.0, self.max_price) if side == "no" else self.yes_range
+        row = {"time_utc": _iso(now), "ticker": s.ticker, "side": side.upper(), "level": name,
+               "level_price": round(s.levels[name], 2), "secs_left": left, "price": round(S, 2),
+               "strike": s.strike, "stack": stack, "proxy_bias": round(self.series.bias, 2)}
         reason = ""
         if te > 840 or not 60 <= left < 180:
             reason = "outside 1-2 min window"
-        elif S >= s.strike:
-            reason = "NO not favourite"
-        elif stack == "down":
-            reason = "MA stack already down"
+        elif stack == ("down" if side == "no" else "up"):
+            reason = f"MA stack already {stack}"
         book = None
         if not reason or 30 <= left < 300:
             try:
                 book = self.k.orderbook(s.ticker)
             except Exception as e:
                 log.warning("orderbook failed: %s", e)
-        yb = (book or {}).get("yes_bids") or []
-        no_ask = round(1 - yb[0][0], 4) if yb else None
-        row.update(no_ask=no_ask, no_ask_size=yb[0][1] if yb else "",
-                   book=json.dumps(yb[:8]) if yb else "")
+        # buying NO takes YES bids; buying YES takes NO bids
+        bids = (book or {}).get("yes_bids" if side == "no" else "no_bids") or []
+        ask = round(1 - bids[0][0], 4) if bids else None
+        row.update(ask=ask, ask_size=bids[0][1] if bids else "", book=json.dumps(bids[:8]) if bids else "")
         if not reason:
-            if no_ask is None:
+            if ask is None:
                 reason = "empty book"
-            elif no_ask > self.max_price:
-                reason = f"NO ask {no_ask:.2f} above cap"
-        row["decision"] = "BUY NO" if not reason else "skip: " + reason
+            elif not lo <= ask <= hi:
+                reason = f"{side.upper()} ask {ask:.2f} outside {lo:.2f}-{hi:.2f}"
+        row["decision"] = f"BUY {side.upper()}" if not reason else "skip: " + reason
         self._append("signals.csv", row)
         log.info("%s %s", s.ticker, row["decision"])
         if reason:
             return
-        n, avg = fill_no(yb, self.stake, self.max_price)
+        n, avg = fill_no(bids, self.stake, hi)
         if n == 0:
             return
-        s.done = True
+        s.done.add(side)
         fee = kalshi_fee(n, avg)
-        trade = {"time_utc": _iso(now), "ticker": s.ticker, "level": name, "secs_left": left,
-                 "contracts": n, "avg_price": round(avg, 4), "fee": fee, "cost": round(n * avg + fee, 2),
-                 "close_ts": s.close_ts, "result": "", "won": "", "pnl": ""}
+        trade = {"time_utc": _iso(now), "ticker": s.ticker, "side": side.upper(), "level": name,
+                 "secs_left": left, "contracts": n, "avg_price": round(avg, 4), "fee": fee,
+                 "cost": round(n * avg + fee, 2), "close_ts": s.close_ts, "result": "", "won": "", "pnl": ""}
         self.unsettled.append(trade)
-        log.info("PAPER BUY %d NO %s @ %.2f (fee %.2f)", n, s.ticker, avg, fee)
+        log.info("PAPER BUY %d %s %s @ %.2f (fee %.2f)", n, side.upper(), s.ticker, avg, fee)
 
     def settle(self, now: int):
         if now - self._last_settle < 30:
@@ -521,7 +553,7 @@ class LateBreakdownPaper:
                 continue
             if res is None:
                 continue
-            won = int(res == "no")
+            won = int(res == tr["side"].lower())
             tr.update(result=res, won=won,
                       pnl=round(tr["contracts"] * (won - tr["avg_price"]) - tr["fee"], 2))
             self._append("trades.csv", {k: v for k, v in tr.items() if k != "close_ts"})

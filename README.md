@@ -46,8 +46,9 @@ paper trading builds a real executable-price dataset.
 
 The one rule that held up on data it had never seen (Dec 2025 - Apr 2026). It buys NO when
 BRTI first breaks $5 below the hard bottom or the previous 15-minute low with 1-2 minutes
-left, NO is the favourite, the 15m/60m/24h moving averages are not already stacked down,
-and NO costs 96c or less. Paper only: no orders are sent.
+left, the 15m/60m/24h moving averages are not already stacked down,
+and NO costs 96c or less. A second, separately logged line paper trades the YES mirror (breaks
+above the hard top or previous 15-minute high, YES 58-92c). Paper only: no orders are sent.
 
 ```bash
 export KALSHI_KEY_ID=...            # read-only key, used for BRTI history
