@@ -564,6 +564,12 @@ class LateBreakdownPaper:
             except Exception as e:
                 log.warning("session start failed: %s", e)
                 self.session = None
+            # Kalshi often lists the next market ~30 s after it opens: replay the seconds missed.
+            if self.session and self.session.live:
+                for u in range(self.session.open_ts, t):
+                    v = self.series.value(u)
+                    if v is not None:
+                        self.step(u, v)
         if self.session:
             try:
                 self.step(t, price)
