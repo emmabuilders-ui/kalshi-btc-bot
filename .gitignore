@@ -1,6 +1,6 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-data/
-results/
-runs/
+/data/
+/results/
+/runs/

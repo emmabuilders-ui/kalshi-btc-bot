@@ -43,6 +43,12 @@ def main(argv=None) -> None:
     lb.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     lb.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    rp = sub.add_parser("paper-range", help="paper trade the hourly Bitcoin range rule (no orders are sent)")
+    rp.add_argument("--out", default="runs/range")
+    rp.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
+    rp.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    rp.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
     t.add_argument("tf", choices=["1m", "5m", "15m", "1h", "4h"])
@@ -86,6 +92,9 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-breakdown":
         from .late_breakdown import from_env
         from_env(a.out, a.stake, a.max_price, a.push_logs).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-range":
+        from .range_paper import from_env as range_env
+        range_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)
