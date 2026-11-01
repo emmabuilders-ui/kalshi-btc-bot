@@ -13,10 +13,10 @@ The rule (locked 2026-10-31 and tested on Dec 2025 - Apr 2026 data it had never 
   already pointing down (skip if price < SMA15m < SMA60m < SMA24h).
 * NO price cap 96c (the edge sits below 97c).
 
-Kalshi's own CF Benchmarks feed lags several minutes, so live prices come from the mean of
-exchange mid prices (Coinbase, Kraken, Bitstamp, Gemini), corrected by their measured
-offset to the real BRTI. Real BRTI replaces the proxy as soon as it is published, so
-levels and averages use real BRTI wherever it exists.
+Prices are the real BRTI from Kalshi's CF Benchmarks passthrough (/cfbenchmarks/values,
+about 1 s behind, needs an API key). If that feed stalls, the bot falls back to the mean of
+exchange mid prices (Coinbase, Kraken, Bitstamp, Gemini) corrected by their measured offset
+to BRTI, and the price log marks those seconds as "proxy".
 """
 
 from __future__ import annotations
@@ -203,6 +203,11 @@ class KalshiClient:
         r = (m.get("result") or "").lower()
         return r if r in ("yes", "no") else None
 
+    def brti_live(self) -> dict[int, float]:
+        """Real BRTI for the last hour, one value per second, about 1 s behind real time."""
+        j = self.get("/cfbenchmarks/values", retries=6, id="BRTI")
+        return {p["time"] // 1000: float(p["value"]) for p in j["data"]["payload"] if p["time"] % 1000 == 0}
+
     def brti_hour(self, hour_ts: int) -> dict[int, float]:
         """Real BRTI, one value per second, for the hour starting at hour_ts (as far as published)."""
         stamp = datetime.fromtimestamp(hour_ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -320,7 +325,10 @@ class LateBreakdownPaper:
         self.unsettled: list[dict] = []
         self.push_logs = push_logs
         self._last_cal = 0
-        self.ready_ts: int | None = None  # first time the proxy offset was measured on >= 5 min
+        self.ready_ts: int | None = None  # first second the bot processed with live prices
+        self._cursor: int | None = None   # last second fed to the rule
+        self._last_proxy = 0
+        self._quotes: dict = {}
         self._last_push = 0
         self._last_settle = 0
         self._price_fh = None
@@ -336,7 +344,7 @@ class LateBreakdownPaper:
                 w.writeheader()
             w.writerow(row)
 
-    def _log_price(self, t: int, raw: float | None, quotes: dict):
+    def _log_price(self, t: int, source: str):
         """1-second prices, one gzip file per UTC hour (closed at the hour, so each is complete)."""
         hour = datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%d/%H")
         if hour != self._price_day:
@@ -347,10 +355,11 @@ class LateBreakdownPaper:
             new = not path.exists()
             self._price_fh = gzip.open(path, "at")
             if new:
-                self._price_fh.write("unix_s,proxy_raw,proxy_offset," + ",".join(EXCHANGES) + "\n")
+                self._price_fh.write("unix_s,price,source,brti,proxy_raw,proxy_offset\n")
             self._price_day = hour
-        q = ",".join("" if quotes.get(n) is None else f"{quotes[n]:.2f}" for n in EXCHANGES)
-        self._price_fh.write(f"{t},{'' if raw is None else f'{raw:.2f}'},{self.series.bias:.2f},{q}\n")
+        v, b, p = self.series.value(t), self.series.brti.get(t), self.series.proxy.get(t)
+        f = lambda x: "" if x is None else f"{x:.2f}"
+        self._price_fh.write(f"{t},{f(v)},{source},{f(b)},{f(p)},{self.series.bias:.2f}\n")
 
     def _status(self, now: float, note: str = ""):
         trades = self.out / "trades.csv"
@@ -394,23 +403,25 @@ class LateBreakdownPaper:
         log.info("warm-up: %d BRTI seconds loaded, latest %s", len(self.series.brti),
                  datetime.fromtimestamp(max(self.series.brti), timezone.utc).isoformat())
 
-    def sync_brti(self, now: int):
-        if now - self._last_cal < 120:
-            return
-        self._last_cal = now
+    def poll_brti(self) -> int | None:
+        """Fetch live BRTI; returns the latest second available."""
         try:
-            for h in {(now - 3600) // 3600 * 3600, now // 3600 * 3600}:
-                self.series.brti.update(self.k.brti_hour(h))
-            n = self.series.recalibrate()
-            if n >= 300 and self.ready_ts is None:
-                self.ready_ts = now
-                log.info("proxy calibrated; trading from the next session")
-            log.info("BRTI synced to %s; proxy offset %.2f from %d s",
-                     datetime.fromtimestamp(max(self.series.brti), timezone.utc).strftime("%H:%M:%S"),
-                     self.series.bias, n)
+            self.series.brti.update(self.k.brti_live())
         except Exception as e:
-            log.warning("BRTI sync failed: %s", e)
-        self.series.prune(now - WARMUP - 3600)
+            log.warning("live BRTI failed: %s", e)
+        return max(self.series.brti) if self.series.brti else None
+
+    def poll_proxy(self, now: int, every: int):
+        """Exchange mid prices: a fallback if live BRTI stalls, and its offset to BRTI is tracked."""
+        if now - self._last_proxy < every:
+            return
+        self._last_proxy = now
+        raw, self._quotes = self.px.price()
+        if raw is not None:
+            self.series.proxy[now] = raw
+        if now % 120 < every:
+            self.series.recalibrate()
+            self.series.prune(now - WARMUP - 3600)
 
     # ---------------------------------------------------------------------- sessions
     def start_session(self, now: int) -> Session | None:
@@ -424,9 +435,9 @@ class LateBreakdownPaper:
             return None
         lv = session_levels(b, len(b))
         s = Session(m["ticker"], m["strike"], o, m["close_ts"], float(b[-1]), lv,
-                    live=self.ready_ts is not None and self.ready_ts <= o)
+                    live=self.ready_ts is not None and self.ready_ts <= o + 1)
         log.info("session %s strike %.2f open %.2f levels %s%s", s.ticker, s.strike, s.s0,
-                 {k: round(v, 2) for k, v in lv.items()}, "" if s.live else " (warming up, watch only)")
+                 {k: round(v, 2) for k, v in lv.items()}, "" if s.live else " (started mid-session, watch only)")
         self._append("sessions.csv", {"ticker": s.ticker, "open_utc": _iso(o), "strike": s.strike,
                                       "price_at_open": round(s.s0, 2),
                                       "hard_bottom": round(lv["hard"], 2) if "hard" in lv else "",
@@ -523,25 +534,41 @@ class LateBreakdownPaper:
         while seconds is None or time.time() - start < seconds:
             tick = time.time()
             now = int(tick)
-            raw, quotes = self.px.price()
-            if raw is not None:
-                self.series.proxy[now] = raw
-            self._log_price(now, raw, quotes)
-            self.sync_brti(now)
-            if self.session is None or now >= self.session.close_ts:
-                try:
-                    self.session = self.start_session(now)
-                except Exception as e:
-                    log.warning("session start failed: %s", e)
-                    self.session = None
-            if raw is not None and self.session:
-                try:
-                    self.step(now, raw - self.series.bias)
-                except Exception as e:
-                    log.exception("step failed: %s", e)
+            latest = self.poll_brti()
+            stale = latest is None or latest < now - 5
+            self.poll_proxy(now, 1 if stale else 10)
+            if stale:  # BRTI feed stalled: run on the corrected exchange price up to now
+                if latest is not None and now - latest > 15:
+                    log.warning("live BRTI is %ss behind; using exchange prices", now - latest)
+                latest = now if now in self.series.proxy else latest
+            if latest is not None:
+                if self._cursor is None:
+                    self._cursor = latest - 1
+                    self.ready_ts = latest
+                for t in range(self._cursor + 1, latest + 1):
+                    self.process(t, "brti" if t in self.series.brti else "proxy")
+                self._cursor = max(self._cursor, latest)
             self.settle(now)
             self._push(now)
             time.sleep(max(0.0, 1.0 - (time.time() - tick)))
+
+    def process(self, t: int, source: str):
+        """Feed one second to the rule: roll the session at its close, then check for breaks."""
+        price = self.series.value(t)
+        if price is None:
+            return
+        self._log_price(t, source)
+        if self.session is None or t >= self.session.close_ts:
+            try:
+                self.session = self.start_session(t)
+            except Exception as e:
+                log.warning("session start failed: %s", e)
+                self.session = None
+        if self.session:
+            try:
+                self.step(t, price)
+            except Exception as e:
+                log.exception("step failed: %s", e)
 
 
 def _iso(t: float) -> str:

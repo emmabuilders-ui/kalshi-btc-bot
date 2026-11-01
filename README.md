@@ -57,9 +57,9 @@ python -m kalshi_btc_bot paper-breakdown --out runs/breakdown --stake 20
 
 It writes `sessions.csv` (levels per session), `signals.csv` (every break it judged, with the
 order book), `trades.csv` (paper fills walked through the real book, Kalshi fees, settlement),
-`prices/` (1-second prices) and `status.json`. Kalshi's BRTI feed lags several minutes, so
-live prices are the mean of Coinbase, Kraken, Bitstamp and Gemini mid prices minus their
-measured offset to BRTI; it waits for that offset before trading.
+`prices/` (1-second prices) and `status.json`. Prices are the real BRTI from Kalshi's CF
+Benchmarks feed (about 1 s behind); if it stalls, the bot falls back to exchange mid prices
+corrected to BRTI.
 
 Server install (Ubuntu): `deploy/setup.sh`. It installs a service that restarts on reboot and
 pushes the logs to the `paper-logs` branch every hour. `kbot status | log | update`.
