@@ -189,6 +189,8 @@ class KalshiClient:
         for m in j.get("markets", []):
             close_ts = datetime.fromisoformat(m["close_time"].replace("Z", "+00:00")).timestamp()
             open_ts = datetime.fromisoformat(m["open_time"].replace("Z", "+00:00")).timestamp()
+            if m.get("floor_strike") is None:  # listed a few seconds before its strike is set
+                continue
             if open_ts <= now < close_ts and (best is None or close_ts < best["close_ts"]):
                 best = {"ticker": m["ticker"], "strike": float(m["floor_strike"]),
                         "open_ts": int(open_ts), "close_ts": int(close_ts)}
