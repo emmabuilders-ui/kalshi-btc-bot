@@ -45,7 +45,7 @@ def main(argv=None) -> None:
 
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
-    t.add_argument("tf", choices=["15m", "1h", "4h"])
+    t.add_argument("tf", choices=["1m", "5m", "15m", "1h", "4h"])
     t.add_argument("bars", type=int, help="window length in bars (1-24)")
     t.add_argument("target", nargs="?", help="target as a price (85000) or a move (+1%%, -0.5%%); omit for a ladder")
 

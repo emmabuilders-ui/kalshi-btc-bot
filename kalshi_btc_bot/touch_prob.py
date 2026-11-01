@@ -3,7 +3,8 @@
 Model: logistic regression on how far the target is in units of current
 volatility, the volatility state (last 10 bars vs last 100), the window length,
 the target's direction and whether the last bar moved toward it. Fitted on
-Binance 1-minute BTC/ETH/SOL data, 2026-05-01 to 2026-10-31. Earlier versions of
+Binance 1-minute BTC/ETH/SOL data, 2026-05-01 to 2026-10-31, for 1m, 5m, 15m,
+1h and 4h bars. Earlier versions of
 the same design were calibrated within about 1 point on untouched 2026 data.
 
 Inputs are price bars only (open, high, low, close), so any instrument with bar
@@ -20,6 +21,12 @@ import numpy as np
 # Fitted 2026-05-01..2026-10-31 (6 months), BTC+ETH+SOL. Feature order:
 # ln_z, z, vol_ln, vol_ln*ln_z, ln_bars, ln_bars*ln_z, ln_bars*vol_ln, direction, trend
 MODELS = {
+    "1m": (-0.3447423835349997, [-0.8953395353089604, -0.9204144481517087, 0.7742828667469468,
+                                 0.28456795096898024, 0.0883238603762287, -0.0527298803997809,
+                                 -0.08198337504274965, 0.0004617089502586169, 0.07762932881399172]),
+    "5m": (-0.47767579748577094, [-1.3074332896552296, -0.672904168869849, 1.1878244687213464,
+                                  0.3388464582328702, 0.08948599981240882, 0.032372290872447675,
+                                  -0.12244627067524678, -0.007387872213355874, -0.0030194835206082088]),
     "15m": (-0.405510884786265, [-1.3652225356552687, -0.6091906342698061, 1.1295673839449634,
                                  0.1366582038825023, 0.05122973887307682, 0.040132138076163164,
                                  -0.16974742075434332, -0.04250940832875883, 0.00785685685504035]),
@@ -33,7 +40,8 @@ MODELS = {
 FIT_PERIOD = "2026-05-01 to 2026-10-31"
 Z_RANGE = (0.5, 3.0)       # target distances the model was fitted on (volatility units)
 BARS_RANGE = (1, 24)
-TF_SECONDS = {"15m": 900, "1h": 3600, "4h": 14400}
+LADDER = {"1m": (0.05, 0.1, 0.15, 0.25, 0.5, 1), "5m": (0.1, 0.25, 0.5, 0.75, 1, 1.5)}
+TF_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400}
 
 
 @dataclass
@@ -138,7 +146,7 @@ def run_cli(coin: str, tf: str, bars: int, target: str | None) -> None:
         else:
             targets = [float(t.replace("$", "").replace(",", ""))]
     else:
-        targets = [vs.price * (1 + s * p / 100) for p in (0.25, 0.5, 1, 1.5, 2, 3) for s in (1, -1)]
+        targets = [vs.price * (1 + s * p / 100) for p in LADDER.get(tf, (0.25, 0.5, 1, 1.5, 2, 3)) for s in (1, -1)]
     print(f"{'target':>12} {'move':>8} {'chance':>7}")
     for tp in targets:
         r = touch_probability(tf, vs, tp, bars)

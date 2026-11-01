@@ -50,3 +50,11 @@ def test_down_target_and_flags():
     vs = vol_state(closes())
     r = touch_probability("4h", vs, vs.price * 0.9, 1)
     assert r.direction == -1 and r.outside_fit and r.prob < 0.05
+
+
+@pytest.mark.parametrize("tf", ["1m", "5m"])
+def test_fast_timeframes(tf):
+    vs = vol_state(closes())
+    vs.ratio, vs.last_dir = 1.0, 1
+    ps = [touch_probability(tf, vs, vs.price * math.exp(k * vs.sigma * 2), 4).prob for k in (0.5, 1, 2)]
+    assert all(a > b for a, b in zip(ps, ps[1:])) and 0.05 < ps[1] < 0.6
