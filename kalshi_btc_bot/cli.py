@@ -43,8 +43,20 @@ def main(argv=None) -> None:
     lb.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     lb.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
+    t.add_argument("coin", help="BTC, ETH or SOL")
+    t.add_argument("tf", choices=["15m", "1h", "4h"])
+    t.add_argument("bars", type=int, help="window length in bars (1-24)")
+    t.add_argument("target", nargs="?", help="target as a price (85000) or a move (+1%%, -0.5%%); omit for a ladder")
+
     sub.add_parser("live", help="live trading (locked)")
 
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if "touch" in argv:  # let "-1%" or "-0.5%" be a target, not an option
+        for i, x in enumerate(argv):
+            if i > argv.index("touch") and x[:2] != "--" and len(x) > 1 and x[0] == "-" and (x[1].isdigit() or x[1] == "."):
+                argv.insert(i, "--")
+                break
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cfg = load_config(a.config)
@@ -74,6 +86,9 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-breakdown":
         from .late_breakdown import from_env
         from_env(a.out, a.stake, a.max_price, a.push_logs).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "touch":
+        from .touch_prob import run_cli
+        run_cli(a.coin, a.tf, a.bars, a.target)
     elif a.cmd == "live":
         from .broker import LiveBroker, LiveTradingLocked
         try:

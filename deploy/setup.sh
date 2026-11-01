@@ -100,7 +100,7 @@ systemctl restart kalshi-paper
 
 cat > /usr/local/bin/kbot <<'EOF'
 #!/usr/bin/env bash
-# kbot status | log | update | stop | start
+# kbot status | log | update | stop | start | touch COIN TF BARS [TARGET]
 case "${1:-status}" in
   status) systemctl --no-pager status kalshi-paper | head -5; cat /opt/kalshi-logs/breakdown/status.json 2>/dev/null ;;
   log)    journalctl -u kalshi-paper -n 50 --no-pager ;;
@@ -108,7 +108,8 @@ case "${1:-status}" in
             "https://raw.githubusercontent.com/emmabuilders-ui/kalshi-btc-bot/${BRANCH:-main}/deploy/setup.sh" | bash ;;
   stop)   systemctl stop kalshi-paper ;;
   start)  systemctl start kalshi-paper ;;
-  *) echo "usage: kbot status|log|update|stop|start" ;;
+  touch)  shift; /opt/kalshi-btc-bot/.venv/bin/python -m kalshi_btc_bot touch "$@" ;;
+  *) echo "usage: kbot status|log|update|stop|start|touch COIN TF BARS [TARGET]" ;;
 esac
 EOF
 chmod +x /usr/local/bin/kbot
@@ -118,4 +119,4 @@ echo
 journalctl -u kalshi-paper -n 8 --no-pager || true
 echo
 echo "Done. The paper trader is running and restarts by itself after a reboot."
-echo "Commands:  kbot status   kbot log   kbot update"
+echo "Commands:  kbot status   kbot log   kbot update   kbot touch BTC 1h 6 +1%"
