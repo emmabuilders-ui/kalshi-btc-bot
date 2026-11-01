@@ -30,6 +30,19 @@ def main(argv=None) -> None:
     p.add_argument("--methods", nargs="*", help="exit methods to run (default: all)")
     p.add_argument("--minutes", type=float, help="stop after this many minutes")
 
+    r = sub.add_parser("record", help="record Kalshi order books and BTC prices every second (read-only)")
+    r.add_argument("--out", default="data/recordings")
+    r.add_argument("--interval", type=float, default=1.0)
+    r.add_argument("--depth", type=int, default=10)
+    r.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
+    lb = sub.add_parser("paper-breakdown", help="paper trade the late-breakdown NO rule (no orders are sent)")
+    lb.add_argument("--out", default="runs/breakdown")
+    lb.add_argument("--stake", type=float, default=20.0, help="dollars per paper trade")
+    lb.add_argument("--max-price", type=float, default=0.96, help="highest NO price to pay")
+    lb.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    lb.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     sub.add_parser("live", help="live trading (locked)")
 
     a = ap.parse_args(argv)
@@ -54,6 +67,13 @@ def main(argv=None) -> None:
     elif a.cmd == "paper":
         from .paper import run_paper
         run_paper(cfg, a.out, a.feed, a.methods, int(a.minutes * 60) if a.minutes else None)
+    elif a.cmd == "record":
+        from .recorder import Recorder
+        n = Recorder(a.out, a.interval, a.depth).run(a.minutes * 60 if a.minutes else None)
+        print(f"{n} snapshots written to {a.out}")
+    elif a.cmd == "paper-breakdown":
+        from .late_breakdown import from_env
+        from_env(a.out, a.stake, a.max_price, a.push_logs).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "live":
         from .broker import LiveBroker, LiveTradingLocked
         try:
