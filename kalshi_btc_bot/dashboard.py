@@ -679,6 +679,8 @@ function timegrid(g,X,tL,tR,T,B,h,labels){
   if(labels){const every=ZOOMS[zi]>=64?900:ZOOMS[zi]>=32?3600:10800;
    if(t%every===0||day){g.fillStyle=css(day?'--fg':'--mut');g.font=(day||hr?'600 ':'')+'11px system-ui';
     const d=new Date(t*1000);g.fillText(day?fDay.format(d):hm(t),X(t)-14,h-6)}}}}
+// right-hand gutter (same on both charts so their time axes line up): the current hour's band labels live here, clear of the price line
+const GUT=110;
 function draw(){
  if(!D)return;
  const last=P.length?P[P.length-1]:null;if(last){const a=avg60(last[0]-1,last[0]).at(-1);$('px').textContent=a&&a[1]!=null?usd(a[1]):usd(last[1]);$('pxraw').textContent=`60-s average · BRTI now ${usd(last[1])}`}
@@ -688,7 +690,7 @@ function draw(){
  sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);
  const [T0]=range(),tL=T0+sc.scrollLeft/pps(),tR=tL+sc.clientWidth/pps();
  // ---------------- price chart
- const [g,w]=setup($('c'),430),h=430,L=66,R=8,T=8,B=22;
+ const [g,w]=setup($('c'),430),h=430,L=66,R=GUT,T=8,B=22;const gut=[];
  const X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
  const vis=P.filter(p=>p[0]>=tL-60&&p[0]<=tR+60);
  const ses=(H?H.sessions:[]).concat(D.session&&D.session.strike?[[D.session.open_ts,D.session.strike]]:[]).filter(s=>s[0]+900>=tL&&s[0]<=tR);
@@ -708,8 +710,10 @@ function draw(){
   const gaps=edges.slice(1).map((e,k)=>e-edges[k]).sort((a,b)=>a-b),med=gaps[gaps.length>>1]||100;
   for(let k=0;k+1<edges.length;k++){const a=edges[k],b=edges[k+1];if(b<lo||a>hi||b-a>1.5*med)continue;
    if(k%2===0){g.fillStyle=css('--ladder');g.globalAlpha=.13;g.fillRect(x0,Y(b),x1-x0,Y(a)-Y(b));g.globalAlpha=1}
-   if(ZOOMS[zi]>=64&&Y(a)-Y(b)>=13&&x1-x0>120){g.fillStyle=css('--ladder-t');g.font='10px system-ui';
-    const q=bandQ(c,a,b),t=`${usd(a)}–${usd(b)}`+(q?`   K ${q.yes_ask!=null?Math.round(q.yes_ask*100)+'¢':'–'} · M ${q.model_yes!=null?Math.round(q.model_yes*100)+'¢':'–'}`:''),tx=Math.min(x1,w-R)-g.measureText(t).width-6;if(tx>=Math.max(x0,L)+4)g.fillText(t,tx,(Y(a)+Y(b))/2+3.5)}}
+   const q=bandQ(c,a,b),t=`${usd(a)}–${usd(b)}`+(q?`  K ${q.yes_ask!=null?Math.round(q.yes_ask*100)+'¢':'–'} · M ${q.model_yes!=null?Math.round(q.model_yes*100)+'¢':'–'}`:'');
+   if(c>D.now||x1>w-R-2){if(Y(a)-Y(b)>=11)gut.push([`${usd(a)}–${usd(b)}`,q?`K ${q.yes_ask!=null?Math.round(q.yes_ask*100)+'¢':'–'} · M ${q.model_yes!=null?Math.round(q.model_yes*100)+'¢':'–'}`:'',Y(b),Y(a),k%2===0])}  // hour runs off the right edge: label it in the gutter
+   else if(ZOOMS[zi]>=64&&Y(a)-Y(b)>=13&&x1-x0>120){g.fillStyle=css('--ladder-t');g.font='10px system-ui';
+    const tx=x1-g.measureText(t).width-6;if(tx>=Math.max(x0,L)+4)g.fillText(t,tx,(Y(a)+Y(b))/2+3.5)}}
   g.strokeStyle=css('--ladder');g.globalAlpha=.8;g.lineWidth=1;
   for(const e of edges){if(e<lo||e>hi)continue;const y=Math.round(Y(e))+.5;g.beginPath();g.moveTo(x0,y);g.lineTo(x1,y);g.stroke()}
   g.globalAlpha=1}
@@ -788,6 +792,11 @@ function draw(){
   g.fillStyle=css(buy?'--buyzone':'--fg');g.fillText(l1,x+3,y+9.5);g.fillText(l2,x+3,y+19)}
  if(last&&last[0]>=tL&&last[0]<=tR){const la=av.length?av[av.length-1][1]:null;g.fillStyle=css('--fg');g.beginPath();g.arc(X(last[0]),Y(la??last[1]),4,0,7);g.fill()}
  g.restore();
+ // gutter: current hour's band labels, outside the plot so the price line never covers them
+ g.save();g.beginPath();g.rect(w-R,T,R,h-T-B);g.clip();g.font='10px system-ui';
+ for(const [t1,t2,yt,yb,sh] of gut){if(sh){g.fillStyle=css('--ladder');g.globalAlpha=.13;g.fillRect(w-R,yt,R,yb-yt);g.globalAlpha=1}
+  const ym=(yt+yb)/2,two=t2&&yb-yt>=24;if(ym-12<T||ym+13>h-B)continue;g.fillStyle=css('--ladder-t');g.fillText(t1,w-R+5,two?ym-1.5:ym+3.5);if(two)g.fillText(t2,w-R+5,ym+10.5)}
+ g.restore();
  plchart(tL,tR);tables(last?last[1]:null);
 }
 // one shape per bot: Range circle, Breakdown triangle, Fast push square
@@ -796,7 +805,7 @@ function marker(g,bot,x,y,col){g.fillStyle=col;g.strokeStyle=css('--card');g.lin
  else if(bot==='Fast push'){g.rect(x-5,y-5,10,10)}else g.arc(x,y,5,0,7);g.fill();g.stroke()}
 const BOTS=[['Total','--line'],['Range','--yes'],['Breakdown','--no'],['Fast push','--fp']];
 function plchart(tL,tR){
- const [g,w]=setup($('pl'),240),h=240,L=66,R=8,T=8,B=22;
+ const [g,w]=setup($('pl'),240),h=240,L=66,R=GUT,T=8,B=22;
  const X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
  const pts=D.pnl.map(r=>({...r,t:tsOf(r.time_utc)}));
  const [T0]=range();const series={},run={};for(const [b] of BOTS){series[b]=[[T0,0]];run[b]=0}
