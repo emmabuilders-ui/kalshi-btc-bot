@@ -150,3 +150,7 @@ time_utc,ticker,side,level,level_price,secs_left,price,strike,stack,proxy_bias,a
 2026-11-02 09:19:45,KXBTC15M-26NOV020430-30,NO,15min,78129.19,615,78118.63,78169.51,mixed,-4.76,,,,skip: outside 1-2 min window
 2026-11-02 09:22:00,KXBTC15M-26NOV020430-30,NO,hard,78101.65,480,78097.98,78169.51,mixed,-4.8,,,,skip: outside 1-2 min window
 2026-11-02 09:32:35,KXBTC15M-26NOV020445-45,NO,hard,78005.09,745,77995.57,78034.03,mixed,-4.67,,,,skip: outside 1-2 min window
+2026-11-02 09:46:05,KXBTC15M-26NOV020500-00,YES,hard_top,78005.09,835,78021.28,77983.62,mixed,-3.4,,,,skip: outside 1-2 min window
+2026-11-02 09:47:45,KXBTC15M-26NOV020500-00,YES,15min_high,78040.14,735,78048.09,77983.62,mixed,-3.15,,,,skip: outside 1-2 min window
+2026-11-02 10:01:05,KXBTC15M-26NOV020515-15,NO,hard,77911.74,835,77906.35,77970.2,mixed,-1.36,,,,skip: outside 1-2 min window
+2026-11-02 10:35:00,KXBTC15M-26NOV020545-45,YES,hard_top,77927.12,600,77929.83,77874.48,mixed,0.36,,,,skip: outside 1-2 min window
