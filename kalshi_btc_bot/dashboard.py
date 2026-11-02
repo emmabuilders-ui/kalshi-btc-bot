@@ -190,6 +190,8 @@ class Dashboard:
         self.first_ts: int | None = None
         self.model = RangeModel()
         self.quotes: dict = {}
+        self.strikes: dict[int, float] = {}   # 15-minute session open -> Kalshi target (strike)
+        self._strikes_at = 0.0
         self.q15: list[list] = []     # [t, yes_bid, yes_ask] for the current 15-minute contract
         self._quotes_at = 0.0
 
@@ -208,7 +210,33 @@ class Dashboard:
         if pts:
             self.first_ts = pts[0][0]
         lad = [[c, e] for c, e in sorted(self.ladders.items())]
-        return {"prices": pts, "ladders": lad, **history_events(self.logs)}
+        ev = history_events(self.logs)
+        have = {t: k for t, k in ev["sessions"]}
+        have.update(self.strikes)  # Kalshi's own list wins; the bot's log fills any gap
+        ev["sessions"] = [[t, have[t]] for t in sorted(have)]
+        return {"prices": pts, "ladders": lad, **ev}
+
+    def update_strikes(self, now: float):
+        """Every 15-minute target since the history starts, straight from Kalshi (one call a minute)."""
+        if now - self._strikes_at < 60:
+            return
+        self._strikes_at = now
+        lo = int(self.first_ts or now - 86400)
+        cursor = None
+        try:
+            for _ in range(10):
+                j = self.k.get("/markets", series_ticker="KXBTC15M", min_close_ts=lo, max_close_ts=int(now) + 1800,
+                               limit=1000, **({"cursor": cursor} if cursor else {}))
+                for m in j.get("markets", []):
+                    k = _f(m.get("floor_strike"))
+                    if k:
+                        close = int(datetime.fromisoformat(m["close_time"].replace("Z", "+00:00")).timestamp())
+                        self.strikes[close - 900] = k
+                cursor = j.get("cursor")
+                if not cursor:
+                    break
+        except Exception as e:
+            self.err = f"15-min targets: {e}"
 
     def fetch_ladder(self, close_ts: int) -> list[float]:
         """Edges of every Kalshi hourly range band (KXBTC) for the hour that closes at close_ts."""
@@ -300,6 +328,7 @@ class Dashboard:
         except Exception as e:  # keep serving what we have
             self.err = f"price feed: {e}"
         self.update_ladders(now)
+        self.update_strikes(now)
         s15 = self.session
         if s15:
             try:
