@@ -388,20 +388,34 @@ function draw(){
  for(let i=0;i<vis.length;i++){const x0=X(vis[i][0]),y0=Y(vis[i][1]),p1=vis[Math.min(i+1,vis.length-1)],x1=X(p1[0]),y1=Y(p1[1]);
   for(let c=Math.max(0,Math.floor(Math.min(x0,x1)));c<=Math.min(colMin.length-1,Math.ceil(Math.max(x0,x1)));c++){
    colMin[c]=Math.min(colMin[c],y0,y1);colMax[c]=Math.max(colMax[c],y0,y1)}}
+ const over=(x,yy,tw,th)=>{let n=0;const a=Math.max(0,Math.floor(x)-2),b=Math.min(colMin.length-1,Math.ceil(x+tw)+2);
+  for(let c=a;c<=b;c++)if(colMin[c]<=yy+th+3&&colMax[c]>=yy-3)n++;
+  if(placed.some(p=>x<p[0]+p[2]&&x+tw>p[0]&&yy<p[1]+p[3]&&yy+th>p[1]))n+=1e6;return n};
+ const drawBox=(x,yy,tw,th,txt,col)=>{placed.push([x,yy,tw,th]);g.fillStyle=css('--card');g.globalAlpha=.9;g.fillRect(x,yy,tw,th);g.globalAlpha=1;
+  g.strokeStyle=col;g.lineWidth=1;g.strokeRect(x,yy,tw,th);g.fillStyle=col;g.fillText(txt,x+4,yy+11);return [x,yy+th/2,tw]};
+ // free-floating label (15-minute buys): nearest spot off the price line
  const label=(x,y,txt,col)=>{g.font='600 10.5px system-ui';const tw=g.measureText(txt).width+8,th=15;
   if(x+tw>w-R)x=Math.max(L,x-tw-28);
-  const free=yy=>{if(yy<T||yy+th>h-B)return false;if(placed.some(p=>x<p[0]+p[2]&&x+tw>p[0]&&yy<p[1]+p[3]&&yy+th>p[1]))return false;
-   const a=Math.max(0,Math.floor(x)-2),b=Math.min(colMin.length-1,Math.ceil(x+tw)+2);
-   for(let c=a;c<=b;c++)if(colMin[c]<=yy+th+3&&colMax[c]>=yy-3)return false;return true};
-  let yy=y-th/2;for(let k=1;k<80&&!free(yy);k++)yy=y-th/2+(k%2?1:-1)*Math.ceil(k/2)*8;
-  placed.push([x,yy,tw,th]);g.fillStyle=css('--card');g.globalAlpha=.9;g.fillRect(x,yy,tw,th);g.globalAlpha=1;
-  g.strokeStyle=col;g.lineWidth=1;g.strokeRect(x,yy,tw,th);g.fillStyle=col;g.fillText(txt,x+4,yy+11);return [x,yy+th/2,tw]};
+  let yy=y-th/2;for(let k=1;k<80&&(yy<T||yy+th>h-B||over(x,yy,tw,th));k++)yy=y-th/2+(k%2?1:-1)*Math.ceil(k/2)*8;
+  return drawBox(x,yy,tw,th,txt,col)};
+ // range label: stays inside its band box, off the price line where it can
+ const boxLabel=(dx,texts,col,bx0,bx1,by0,by1)=>{g.font='600 10.5px system-ui';const th=15;
+  bx0=Math.max(bx0,L)+3;bx1=Math.min(bx1,w-R)-3;
+  let txt=texts.find(t=>g.measureText(t).width+8<=bx1-bx0)||texts[texts.length-1];const tw=g.measureText(txt).width+8;
+  const ymin=by0+1,ymax=Math.max(ymin,by1-th-1),xmax=Math.max(bx0,bx1-tw),cx=(ymin+ymax)/2;
+  const xs=[Math.min(Math.max(dx+14,bx0),xmax),Math.min(Math.max(dx-tw-14,bx0),xmax),bx0,xmax];for(let q=bx0;q<xmax;q+=30)xs.push(q);
+  let best=null;
+  for(const x of xs){for(let k=0;k<=Math.ceil((ymax-ymin)/2)+1;k++){const yy=Math.min(ymax,Math.max(ymin,cx+(k%2?1:-1)*Math.ceil(k/2)*2-th/2+th/2));
+    const sc=over(x,yy,tw,th);if(!best||sc<best[2])best=[x,yy,sc];if(sc===0)break}if(best[2]===0)break}
+  return drawBox(best[0],best[1],tw,th,txt,col)};
  const full=ZOOMS[zi]>=128,short0=ZOOMS[zi]>=32;
  for(const r of rng){const y=at(r.t);if(y==null)continue;const x=X(r.t),yd=Y(y),col=css(st[r.status]),mid=Y((r.lo+r.hi)/2),short=short0&&x>=L&&x<=w-R;
   const res=r.status==='open'?'OPEN':r.status.toUpperCase()+' '+money(r.pnl);
-  const txt=full?`${hm(r.t)} ${r.side} ${usd(r.lo)}–${usd(r.hi+0.01)} x${r.n} @${Math.round(r.price*100)}¢, model ${r.model?(r.model*100).toFixed(1):'?'}¢ → ${res}`:`${r.side} @${Math.round(r.price*100)}¢ ${res}`;
-  g.strokeStyle=col;g.lineWidth=1.2;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yd);g.lineTo(x,mid);
-  g.stroke();if(short){g.setLineDash([]);const [lx,ly,tw]=label(x+14,mid,txt,col);const ex=lx>x?lx:lx+tw;g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,mid);g.lineTo(x,ly);g.lineTo(ex,ly);g.stroke()}
+  const texts=[`${hm(r.t)} ${r.side} ${usd(r.lo)}–${usd(r.hi+0.01)} x${r.n} @${Math.round(r.price*100)}¢, model ${r.model?(r.model*100).toFixed(1):'?'}¢ → ${res}`,
+   `${hm(r.t)} ${r.side} x${r.n} @${Math.round(r.price*100)}¢, model ${r.model?(r.model*100).toFixed(1):'?'}¢ → ${res}`,`${r.side} @${Math.round(r.price*100)}¢ ${res}`];
+  if(!full)texts.splice(0,2);
+  if(short){const [lx,ly,tw]=boxLabel(x,texts,col,X(r.close-3600),X(r.close),Y(r.hi),Y(r.lo));const ex=lx>x?lx:(lx+tw<x?lx+tw:x);
+   g.strokeStyle=col;g.lineWidth=1.2;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yd);g.lineTo(x,ly);g.lineTo(ex,ly);g.stroke()}
   g.setLineDash([]);g.fillStyle=col;g.strokeStyle=css('--card');g.lineWidth=1.5;g.beginPath();g.arc(x,yd,5,0,7);g.fill();g.stroke()}
  for(const b of (H?H.buys:[]).filter(b=>b.t>=tL&&b.t<=tR)){const y=at(b.t);if(y==null)continue;const x=X(b.t),yy=Y(y),up=b.side==='YES',short=short0&&x>=L&&x<=w-R;
   g.fillStyle=css(st[b.status]);g.beginPath();g.moveTo(x,yy+(up?-9:9));g.lineTo(x-6,yy+(up?2:-2));g.lineTo(x+6,yy+(up?2:-2));g.fill();
