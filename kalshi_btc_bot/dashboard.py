@@ -633,7 +633,9 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 <div class="tscroll"><table id="trades"></table></div></div>
 <div class="card scroll" style="margin-top:12px"><b>Open range positions</b><table id="pos"></table></div>
 <div class="card scroll" style="margin-top:12px"><b>15-minute contract now</b> <span class="mut" id="q15info"></span>
-<div style="display:flex;flex-wrap:wrap;gap:8px 28px;align-items:center;margin:8px 0"><div><div class="mut">YES bid / ask</div><div class="big" id="q15y"></div></div><div><div class="mut">NO bid / ask</div><div class="big" id="q15n"></div></div><canvas id="q15c" style="flex:1;min-width:260px;height:90px"></canvas></div>
+<div style="display:flex;flex-wrap:wrap;gap:8px 28px;align-items:center;margin:8px 0"><div><div class="mut">YES bid / ask</div><div class="big" id="q15y"></div></div><div><div class="mut">NO bid / ask</div><div class="big" id="q15n"></div></div><div><div class="mut">Model YES / NO</div><div class="big" id="q15m"></div></div>
+<div style="flex:1;min-width:260px"><canvas id="q15c" style="width:100%;height:130px"></canvas>
+<div class="mut" style="font-size:11px"><b style="color:var(--yes)">━</b> Kalshi YES ask &nbsp; <b style="color:var(--fg)">┅</b> model YES &nbsp; faint line along 0¢ = model minus Kalshi, colored <span id="q15scale"></span></div></div></div>
 <b>15-minute bots, this session</b><table id="pos15"></table></div>
 <div class="grid">
 <div class="card"><div class="mut">Range bot, settled</div><div class="big" id="sr"></div></div>
@@ -854,17 +856,29 @@ function bandQ(c,a,b){const Q=D&&D.quotes;if(!Q||Q.close!==c)return null;
  return (Q.bands||[]).find(r=>r.lo!=null&&r.hi!=null&&Math.abs(r.lo-a)<1&&Math.abs(r.hi+0.01-b)<1)||null}
 const cents=x=>{if(x==null)return '–';const c=Math.round(x*1000)/10;return (Number.isInteger(c)?c:c.toFixed(1))+'¢'};
 const edge=(m,a)=>{if(m==null||a==null)return '<span class="mut">–</span>';const e=Math.round((m-a)*1000)/10;return `<span style="color:var(${e>0?'--win':'--mut'})">${e>0?'+':''}${e.toFixed(1)}¢</span>`};
+// model-minus-Kalshi color scale: -10¢ red, -5 orange, 0 yellow, +5 blue, +10 green
+const DSTOP=[[-10,[215,48,31]],[-5,[242,142,43]],[0,[232,200,26]],[5,[59,130,246]],[10,[26,152,80]]];
+function dcol(d){d=Math.max(-10,Math.min(10,d));for(let i=1;i<DSTOP.length;i++){const [a,ca]=DSTOP[i-1],[b,cb]=DSTOP[i];
+ if(d<=b){const f=(d-a)/(b-a);return `rgb(${ca.map((c,k)=>Math.round(c+(cb[k]-c)*f)).join(',')})`}}return 'rgb(26,152,80)'}
 function q15(){const R=D.q15||[],s=D.session||{};
- if(!R.length){$('q15y').textContent='–';$('q15n').textContent='–';return}
+ if(!$('q15scale').innerHTML)$('q15scale').innerHTML=DSTOP.map(([v])=>`<b style="color:${dcol(v)}">${v>0?'+':''}${v}¢</b>`).join(' ');
+ if(!R.length){$('q15y').textContent='–';$('q15n').textContent='–';$('q15m').textContent='–';return}
  const r=R[R.length-1];$('q15y').textContent=`${cents(r[1])} / ${cents(r[2])}`;
  $('q15n').textContent=`${r[2]!=null?cents(1-r[2]):'–'} / ${r[1]!=null?cents(1-r[1]):'–'}`;
+ $('q15m').textContent=r[3]!=null?`${cents(r[3])} / ${cents(1-r[3])}`:'–';
  $('q15info').textContent=s.ticker?`target ${usd(s.strike)} · closes ${hm(s.close_ts)} ET · BTC is ${P.length&&P[P.length-1][1]>s.strike?'above':'below'} the target`:'';
  const cv=$('q15c'),dpr=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;cv.width=w*dpr;cv.height=h*dpr;const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);
- const t0=s.open_ts||R[0][0],t1=s.close_ts||R[R.length-1][0],X=t=>4+(t-t0)/(t1-t0)*(w-40),Y=v=>4+(1-v)*(h-18);
+ const t0=s.open_ts||R[0][0],t1=s.close_ts||R[R.length-1][0],X=t=>4+(t-t0)/(t1-t0)*(w-40),Y=v=>6+(1-v)/1.12*(h-12);  // scale runs from +100¢ down to -12¢
  g.strokeStyle=css('--grid');g.font='10px system-ui';g.fillStyle=css('--mut');
  for(const v of [0,.5,1]){g.beginPath();g.moveTo(4,Y(v));g.lineTo(w-36,Y(v));g.stroke();g.fillText(Math.round(v*100)+'¢',w-32,Y(v)+3)}
- g.fillText('YES ask this session',6,h-3);
- g.strokeStyle=css('--yes');g.lineWidth=1.6;g.beginPath();let f=true;for(const q of R){if(q[2]==null)continue;f?g.moveTo(X(q[0]),Y(q[2])):g.lineTo(X(q[0]),Y(q[2]));f=false}g.stroke()}
+ const line=(k,col,dash)=>{g.strokeStyle=col;g.lineWidth=1.6;g.setLineDash(dash);g.beginPath();let f=true;
+  for(const q of R){if(q[k]==null){f=true;continue}f?g.moveTo(X(q[0]),Y(q[k])):g.lineTo(X(q[0]),Y(q[k]));f=false}g.stroke();g.setLineDash([])};
+ // model minus Kalshi YES ask, drawn on the same cents scale around the 0¢ line, colored by size
+ g.globalAlpha=.55;g.lineWidth=2.5;
+ for(let i=1;i<R.length;i++){const a=R[i-1],b=R[i];if(a[2]==null||a[3]==null||b[2]==null||b[3]==null)continue;
+  const da=a[3]-a[2],db=b[3]-b[2];g.strokeStyle=dcol(db*100);g.beginPath();g.moveTo(X(a[0]),Y(da));g.lineTo(X(b[0]),Y(db));g.stroke()}
+ g.globalAlpha=1;
+ line(2,css('--yes'),[]);line(3,css('--fg'),[4,3])}
 let TSIG='';
 function trades(){if(!H)return;const sig=JSON.stringify([H.range,H.buys]);if(sig===TSIG)return;TSIG=sig;
  const R=[];
