@@ -569,9 +569,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--buyzone:#14632f;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--buyzone:#3fbf6a;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
@@ -776,8 +776,9 @@ function draw(){
   const clear=y0=>!pv.some(py=>py>=y0-4&&py<=y0+th+4)&&y0>=T&&y0+th<=h-B;
   const cands=[ys-th-3,ys+3,ys-th-18,ys+18,ys-th-36,ys+36];const y=cands.find(clear)??Math.max(T,Math.min(h-B-th,cands[0]));
   g.fillStyle=css('--card')||'#fff';g.fillRect(x,y,tw,th);
-  g.strokeStyle=css('--target');g.lineWidth=1;g.strokeRect(x+.5,y+.5,tw-1,th-1);
-  g.fillStyle=css('--fg');g.fillText(l1,x+3,y+9.5);g.fillText(l2,x+3,y+19)}
+  const lft=S.close_ts-last[0],buy=lft>=60&&lft<180;  // both 15-min bots buy only with 1-3 minutes left
+  g.strokeStyle=css(buy?'--buyzone':'--target');g.lineWidth=buy?1.5:1;g.strokeRect(x+.5,y+.5,tw-1,th-1);
+  g.fillStyle=css(buy?'--buyzone':'--fg');g.fillText(l1,x+3,y+9.5);g.fillText(l2,x+3,y+19)}
  if(last&&last[0]>=tL&&last[0]<=tR){g.fillStyle=css('--fg');g.beginPath();g.arc(X(last[0]),Y(last[1]),4,0,7);g.fill()}
  g.restore();
  plchart(tL,tR);tables(last?last[1]:null);
