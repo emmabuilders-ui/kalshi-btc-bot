@@ -55,6 +55,13 @@ def main(argv=None) -> None:
     fp.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     fp.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    d = sub.add_parser("dashboard", help="serve a live chart of the paper bots (read-only)")
+    d.add_argument("--port", type=int, default=8080)
+    d.add_argument("--token-file", default="/etc/kalshi-bot/dash_token", help="file holding the secret page path")
+    d.add_argument("--breakdown", default="/opt/kalshi-logs/breakdown")
+    d.add_argument("--range", default="/opt/kalshi-logs-range/range")
+    d.add_argument("--fastpush", default="/opt/kalshi-logs-fastpush/fastpush")
+
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
     t.add_argument("tf", choices=["1m", "5m", "15m", "1h", "4h"])
@@ -104,6 +111,11 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-fastpush":
         from .fast_push import from_env as fp_env
         fp_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "dashboard":
+        from pathlib import Path
+        from .dashboard import serve
+        serve(a.port, Path(a.token_file).read_text().strip(),
+              {"breakdown": Path(a.breakdown), "range": Path(a.range), "fastpush": Path(a.fastpush)})
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)
