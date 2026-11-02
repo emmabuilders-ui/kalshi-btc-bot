@@ -608,7 +608,8 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 .w{background:var(--win-bg);color:var(--win)}.l{background:var(--lose-bg);color:var(--lose)}
 .scroll{overflow-x:auto}
 .tscroll{max-height:380px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--grid);border-radius:6px}
-.tscroll th{position:sticky;top:0;background:var(--card);z-index:1}
+.tscroll th{position:sticky;top:0;background:var(--card);z-index:1;white-space:normal;vertical-align:bottom;line-height:1.2}
+.tscroll td,.tscroll th{padding:4px 6px;font-size:12px}
 .big{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--mut)}
 .key i{display:inline-block;width:12px;height:10px;margin-right:4px;vertical-align:middle;border-radius:2px}
@@ -872,9 +873,9 @@ function q15(){const R=D.q15||[],s=D.session||{};
 let TSIG='';
 function trades(){if(!H)return;const sig=JSON.stringify([H.range,H.buys]);if(sig===TSIG)return;TSIG=sig;
  const R=[];
- for(const r of H.range||[])R.push({t:r.t,bot:'Range',mkt:`hour to ${hm(r.close)} · ${r.lo==null?'':usd(r.lo)}–${r.hi==null?'':usd(r.hi+0.01)}`,
+ for(const r of H.range||[])R.push({t:r.t,bot:'Range',mkt:`${r.lo==null?'':usd(r.lo)}–${r.hi==null?'':usd(r.hi+0.01).slice(1)} · ${hm(r.close)}`,
   side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl,cost:r.cost});
- for(const b of H.buys||[])R.push({t:b.t,bot:b.bot,mkt:`15 min to ${hm(Math.floor(b.t/900)*900+900)} · ${b.level||''}`,
+ for(const b of H.buys||[])R.push({t:b.t,bot:b.bot,mkt:`15-min ${hm(Math.floor(b.t/900)*900+900)} · ${b.level||''}`,
   side:b.side,n:b.n,price:b.price!=null?b.price:b.ask,model:null,status:b.status,pnl:b.pnl,cost:b.cost});
  R.sort((a,b)=>a.t-b.t);
  let cum=0,spent=0,nset=0,wins=0,sp=0,sm=0,nm=0;const W={};const z=()=>({w:0,l:0,o:0,p:0,s:0,sp:0,sm:0,nm:0});for(const k of ['Range','Breakdown','Fast push'])W[k]=z();
@@ -888,7 +889,7 @@ function trades(){if(!H)return;const sig=JSON.stringify([H.range,H.buys]);if(sig
  $('wl').innerHTML=Object.entries(W).map(([k,v])=>{const n=v.w+v.l;
   return `<span><b>${k}</b>: <span style="color:var(--win)">${v.w} won</span> / <span style="color:var(--lose)">${v.l} lost</span>${n?' ('+Math.round(v.w/n*100)+'% win)':''}${v.o?' · '+v.o+' open':''} · ${money(v.p)}${n?' · avg '+money(v.p/n)+'/trade · avg price '+cents(v.sp/n)+(v.nm?' · avg model '+cents(v.sm/v.nm):''):''} · spent $${v.s.toFixed(2)}</span>`}).join('');
  $('tinfo').textContent=`${R.length} trades · total ${money(cum)} settled · avg ${nset?money(cum/nset):'–'} per trade · $${spent.toFixed(2)} spent · newest first`;
- let rows='<tr><th>Time (ET)</th><th>Bot</th><th>Market</th><th>Side</th><th>Contracts</th><th>Price</th><th>Model</th><th>Win/Loss</th><th>Avg model</th><th>Avg price</th><th>Win %</th><th>Spent</th><th>Cumulative spent</th><th>P/L</th><th>Cumulative P/L</th><th>Avg P/L/trade</th></tr>';
+ let rows='<tr><th>Time (ET)</th><th>Bot</th><th>Market</th><th>Side</th><th>Qty</th><th>Price</th><th>Model</th><th>Win/ Loss</th><th>Avg model</th><th>Avg price</th><th>Win %</th><th>Spent</th><th>Total spent</th><th>P/L</th><th>Total P/L</th><th>Avg P/L per trade</th></tr>';
  for(let i=R.length-1;i>=0;i--){const r=R[i];const d=new Date(r.t*1000).toLocaleDateString('en-US',{timeZone:'America/New_York',month:'numeric',day:'numeric'});
   const res=r.status==='open'?'<span class="pill" style="color:var(--open)">open</span>':`<span class="pill ${r.status==='won'?'w':'l'}">${r.status==='won'?'Won':'Lost'}</span>`;
   const pc=v=>v==null?'<span class="mut">–</span>':`<span style="color:var(${v>=0?'--win':'--lose'})">${money(v)}</span>`;
