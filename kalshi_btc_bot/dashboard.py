@@ -378,18 +378,30 @@ function draw(){
  for(const r of rng){const x0=X(r.close-3600),x1=X(r.close),c=css(r.side==='NO'?'--no':'--yes');
   g.fillStyle=c;g.globalAlpha=.10;g.fillRect(x0,Y(r.hi),x1-x0,Y(r.lo)-Y(r.hi));g.globalAlpha=1;
   g.strokeStyle=css(st[r.status]);g.lineWidth=1.5;g.strokeRect(x0,Y(r.hi),x1-x0,Y(r.lo)-Y(r.hi));
-  if(x1-x0>220){g.fillStyle=css(st[r.status]);g.font='600 10.5px system-ui';
-   g.fillText(`${r.side} ${usd(r.lo)}–${usd(r.hi+0.01)} x${r.n} @${Math.round(r.price*100)}¢ (model ${r.model?(r.model*100).toFixed(1):'?'}¢) ${r.status==='open'?'OPEN':r.status.toUpperCase()+' '+money(r.pnl)}`,Math.max(x0,L)+4,Y(r.hi)+12)}}
+}
  g.strokeStyle=css('--target');g.lineWidth=2.2;
  for(const s of ses){g.beginPath();g.moveTo(X(s[0]),Y(s[1]));g.lineTo(X(s[0]+900),Y(s[1]));g.stroke()}
  
  if(ZOOMS[zi]>=64){g.fillStyle=css('--target');g.font='600 10.5px system-ui';for(const s of ses)g.fillText((ZOOMS[zi]>=128?'target ':'')+usd(s[1]),X(s[0])+3,Y(s[1])-4)}
  g.strokeStyle=css('--line');g.lineWidth=1.3;g.beginPath();vis.forEach((p,i)=>{const x=X(p[0]),y=Y(p[1]);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
  const at=t=>{let a=0,b=P.length-1;while(a<b){const m=(a+b)>>1;P[m][0]<t?a=m+1:b=m}return P[a]?P[a][1]:null};
- for(const r of rng){const y=at(r.t);if(y==null)continue;g.fillStyle=css(st[r.status]);g.strokeStyle=css('--card');g.lineWidth=1.5;g.beginPath();g.arc(X(r.t),Y(y),5,0,7);g.fill();g.stroke()}
+ const placed=[];
+ const label=(x,y,txt,col)=>{g.font='600 10.5px system-ui';const tw=g.measureText(txt).width+8,th=15;
+  if(x+tw>w-R)x=Math.max(L,x-tw-28);
+  let yy=y-th/2;for(let k=0;k<30;k++){const hit=placed.find(p=>x<p[0]+p[2]&&x+tw>p[0]&&yy<p[1]+p[3]&&yy+th>p[1]);if(!hit)break;yy=hit[1]+hit[3]+1}
+  placed.push([x,yy,tw,th]);g.fillStyle=css('--card');g.globalAlpha=.9;g.fillRect(x,yy,tw,th);g.globalAlpha=1;
+  g.strokeStyle=col;g.lineWidth=1;g.strokeRect(x,yy,tw,th);g.fillStyle=col;g.fillText(txt,x+4,yy+11);return [x,yy+th/2,tw]};
+ const full=ZOOMS[zi]>=128,short=ZOOMS[zi]>=32;
+ for(const r of rng){const y=at(r.t);if(y==null)continue;const x=X(r.t),yd=Y(y),col=css(st[r.status]),mid=Y((r.lo+r.hi)/2);
+  const res=r.status==='open'?'OPEN':r.status.toUpperCase()+' '+money(r.pnl);
+  const txt=full?`${hm(r.t)} ${r.side} ${usd(r.lo)}–${usd(r.hi+0.01)} x${r.n} @${Math.round(r.price*100)}¢, model ${r.model?(r.model*100).toFixed(1):'?'}¢ → ${res}`:`${r.side} @${Math.round(r.price*100)}¢ ${res}`;
+  g.strokeStyle=col;g.lineWidth=1.2;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yd);g.lineTo(x,mid);
+  g.stroke();if(short){g.setLineDash([]);const [lx,ly,tw]=label(x+14,mid,txt,col);const ex=lx>x?lx:lx+tw;g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,mid);g.lineTo(x,ly);g.lineTo(ex,ly);g.stroke()}
+  g.setLineDash([]);g.fillStyle=col;g.strokeStyle=css('--card');g.lineWidth=1.5;g.beginPath();g.arc(x,yd,5,0,7);g.fill();g.stroke()}
  for(const b of (H?H.buys:[]).filter(b=>b.t>=tL&&b.t<=tR)){const y=at(b.t);if(y==null)continue;const x=X(b.t),yy=Y(y),up=b.side==='YES';
   g.fillStyle=css(st[b.status]);g.beginPath();g.moveTo(x,yy+(up?-9:9));g.lineTo(x-6,yy+(up?2:-2));g.lineTo(x+6,yy+(up?2:-2));g.fill();
-  g.fillStyle=css(st[b.status]);g.font='600 10.5px system-ui';g.fillText(`${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''} ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,x+8,yy+(up?-10:16))}
+  if(short){const col=css(st[b.status]),ty=yy+(up?-28:28);
+   const [lx,ly,tw]=label(x+12,ty,`${hm(b.t)} ${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''} ${b.level||''} → ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,col);g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yy);g.lineTo(lx>x?lx:lx+tw,ly);g.stroke();g.setLineDash([])}}
  if(last&&last[0]>=tL&&last[0]<=tR){g.fillStyle=css('--fg');g.beginPath();g.arc(X(last[0]),Y(last[1]),4,0,7);g.fill()}
  g.restore();
  plchart(tL,tR);tables(last?last[1]:null);
