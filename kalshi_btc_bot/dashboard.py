@@ -437,7 +437,7 @@ class Dashboard:
                 self.q15.append(row)
             except Exception as e:
                 self.err = f"15-min price: {e}"
-        if now - self._quotes_at >= 10:
+        if now - self._quotes_at >= 2:
             self._quotes_at = now
             try:
                 self.quotes = self.range_quotes(now)
@@ -548,9 +548,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#5f7fa6;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#8fb0d6;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
@@ -684,7 +684,7 @@ function draw(){
   for(let k=0;k+1<edges.length;k++){const a=edges[k],b=edges[k+1];if(b<lo||a>hi||b-a>1.5*med)continue;
    if(k%2===0){g.fillStyle=css('--ladder');g.globalAlpha=.13;g.fillRect(x0,Y(b),x1-x0,Y(a)-Y(b));g.globalAlpha=1}
    if(ZOOMS[zi]>=64&&Y(a)-Y(b)>=13&&x1-x0>120){g.fillStyle=css('--ladder-t');g.font='10px system-ui';
-    const q=bandQ(c,a,b),t=`${usd(a)}–${usd(b)}`+(q?`   Kalshi ${q.yes_ask!=null?Math.round(q.yes_ask*100)+'¢':'–'} · model ${q.model_yes!=null?Math.round(q.model_yes*100)+'¢':'–'}`:''),tx=Math.min(x1,w-R)-g.measureText(t).width-6;if(tx>=Math.max(x0,L)+4)g.fillText(t,tx,(Y(a)+Y(b))/2+3.5)}}
+    const q=bandQ(c,a,b),t=`${usd(a)}–${usd(b)}`+(q?`   K ${q.yes_ask!=null?Math.round(q.yes_ask*100)+'¢':'–'} · M ${q.model_yes!=null?Math.round(q.model_yes*100)+'¢':'–'}`:''),tx=Math.min(x1,w-R)-g.measureText(t).width-6;if(tx>=Math.max(x0,L)+4)g.fillText(t,tx,(Y(a)+Y(b))/2+3.5)}}
   g.strokeStyle=css('--ladder');g.globalAlpha=.8;g.lineWidth=1;
   for(const e of edges){if(e<lo||e>hi)continue;const y=Math.round(Y(e))+.5;g.beginPath();g.moveTo(x0,y);g.lineTo(x1,y);g.stroke()}
   g.globalAlpha=1}
