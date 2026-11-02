@@ -112,6 +112,12 @@ def read_price_hour(path: Path, res: int) -> list[list[float]]:
     return [[t, out[t]] for t in sorted(out)]
 
 
+def _hour_end(key: str) -> int:
+    """'YYYY-MM-DD/HH' -> unix time at the end of that UTC hour."""
+    d = datetime.strptime(key, "%Y-%m-%d/%H").replace(tzinfo=timezone.utc)
+    return int(d.timestamp()) + 3600
+
+
 def history_events(L: dict[str, Path]) -> dict:
     """Everything the bots did, for the full-history chart."""
     edges = {r["ticker"]: (_num(r.get("floor")), _num(r.get("cap"))) for r in _rows(L["range"] / "signals.csv")}
@@ -160,6 +166,8 @@ def history_events(L: dict[str, Path]) -> dict:
             st = "open" if tr is None else ("won" if str(tr.get("won")) == "1" else "lost")
             buys.append({"bot": bot, "t": _ts(r.get("break_utc") or r["time_utc"]), "side": r.get("side"),
                          "level": r.get("level"), "ask": _num(r.get("ask")), "status": st,
+                         "n": (tr or {}).get("contracts") or r.get("contracts"),
+                         "price": _num(tr.get("avg_price")) if tr else None,
                          "pnl": _num(tr.get("pnl")) if tr else None})
     return {"range": rng, "sessions": sessions, "levels": levels, "buys": buys}
 
@@ -281,7 +289,7 @@ class Dashboard:
         self.session: dict | None = None
         self.lock = threading.Lock()
         self.err = ""
-        self._hours: dict[str, list] = {}
+        self._hours: dict[str, tuple] = {}   # hour -> (read time, points)
         self.ladders: dict[int, list[float]] = {}   # hour close -> Kalshi range band edges
         self._ladder_at: dict[int, float] = {}
         self.first_ts: int | None = None
@@ -295,13 +303,15 @@ class Dashboard:
 
     def history(self, res: int = 5) -> dict:
         """Price history from the breakdown bot's hourly logs (closed hours are cached)."""
-        cur = datetime.now(timezone.utc).strftime("%Y-%m-%d/%H")
+        now = time.time()
         pts = []
         for f in sorted((self.logs["breakdown"] / "prices").glob("*/*.csv.gz")):
             key = f"{f.parent.name}/{f.name[:2]}"
-            if key not in self._hours or key >= cur:
-                self._hours[key] = read_price_hour(f, res)
-            pts += self._hours[key]
+            # an hour read while the bot was still writing it is incomplete: keep re-reading it
+            # until a read made at least 2 minutes after that hour ended
+            if key not in self._hours or self._hours[key][0] < _hour_end(key) + 120:
+                self._hours[key] = (now, read_price_hour(f, res))
+            pts += self._hours[key][1]
         with self.lock:
             live = sorted(self.prices)
             pts += [[t, self.prices[t]] for t in live[::res] if not pts or t > pts[-1][0]]
@@ -594,6 +604,8 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 .pill{padding:2px 8px;border-radius:10px;font-weight:600;font-size:12px}
 .w{background:var(--win-bg);color:var(--win)}.l{background:var(--lose-bg);color:var(--lose)}
 .scroll{overflow-x:auto}
+.tscroll{max-height:380px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--grid);border-radius:6px}
+.tscroll th{position:sticky;top:0;background:var(--card);z-index:1}
 .big{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--mut)}
 .key i{display:inline-block;width:12px;height:10px;margin-right:4px;vertical-align:middle;border-radius:2px}
@@ -612,7 +624,9 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 </div></div></div>
 <div class="mut" style="font-size:12px;margin-top:4px">Scroll sideways (or drag the scrollbar) to go back through the full history. Both graphs move together.</div>
 </div>
-<div class="card scroll" style="margin-top:12px"><b>Range bands this hour: Kalshi price vs model</b> <span class="mut" id="qinfo"></span><table id="quotes"></table></div>
+<div class="card" style="margin-top:12px"><b>All trades</b> <span class="mut" id="tinfo"></span>
+<div class="key" id="wl" style="margin:6px 0 8px;font-size:13px;color:var(--fg)"></div>
+<div class="tscroll"><table id="trades"></table></div></div>
 <div class="card scroll" style="margin-top:12px"><b>Open range positions</b><table id="pos"></table></div>
 <div class="card scroll" style="margin-top:12px"><b>15-minute contract now</b> <span class="mut" id="q15info"></span>
 <div style="display:flex;flex-wrap:wrap;gap:8px 28px;align-items:center;margin:8px 0"><div><div class="mut">YES bid / ask</div><div class="big" id="q15y"></div></div><div><div class="mut">NO bid / ask</div><div class="big" id="q15n"></div></div><canvas id="q15c" style="flex:1;min-width:260px;height:90px"></canvas></div>
@@ -787,7 +801,7 @@ function draw(){
   const clear=y0=>!pv.some(py=>py>=y0-4&&py<=y0+th+4)&&y0>=T&&y0+th<=h-B;
   const cands=[ys-th-3,ys+3,ys-th-18,ys+18,ys-th-36,ys+36];const y=cands.find(clear)??Math.max(T,Math.min(h-B-th,cands[0]));
   g.fillStyle=css('--card')||'#fff';g.fillRect(x,y,tw,th);
-  const lft=S.close_ts-last[0],buy=lft>=60&&lft<180;  // both 15-min bots buy only with 1-3 minutes left
+  const lft=S.close_ts-last[0],buy=lft>=0&&lft<180;  // green from the start of the 15-min buy rule (3 min left) to the close
   g.strokeStyle=css(buy?'--buyzone':'--target');g.lineWidth=buy?1.5:1;g.strokeRect(x+.5,y+.5,tw-1,th-1);
   g.fillStyle=css(buy?'--buyzone':'--fg');g.fillText(l1,x+3,y+9.5);g.fillText(l2,x+3,y+19)}
  if(last&&last[0]>=tL&&last[0]<=tR){const la=av.length?av[av.length-1][1]:null;g.fillStyle=css('--fg');g.beginPath();g.arc(X(last[0]),Y(la??last[1]),4,0,7);g.fill()}
@@ -841,16 +855,6 @@ function bandQ(c,a,b){const Q=D&&D.quotes;if(!Q||Q.close!==c)return null;
  return (Q.bands||[]).find(r=>r.lo!=null&&r.hi!=null&&Math.abs(r.lo-a)<1&&Math.abs(r.hi+0.01-b)<1)||null}
 const cents=x=>{if(x==null)return '–';const c=Math.round(x*1000)/10;return (Number.isInteger(c)?c:c.toFixed(1))+'¢'};
 const edge=(m,a)=>{if(m==null||a==null)return '<span class="mut">–</span>';const e=Math.round((m-a)*1000)/10;return `<span style="color:var(${e>0?'--win':'--mut'})">${e>0?'+':''}${e.toFixed(1)}¢</span>`};
-function quotes(px){const Q=D.quotes||{};const B=Q.bands||[];
- $('qinfo').textContent=B.length?`${Q.mins_left} min left · BTC ${usd(Q.price)} · updated ${hms(Q.at)} ET`+(Q.mins_left>30?' · the bot only buys from 30 min left':''):'';
- let rows='<tr><th>Band</th><th>Kalshi YES bid / ask</th><th>Model YES</th><th>YES edge</th><th>Kalshi NO ask</th><th>Model NO</th><th>NO edge</th><th>Rule</th></tr>';
- for(const r of B){const inside=px!=null&&(r.lo==null||px>=r.lo)&&(r.hi==null||px<=r.hi+0.01);
-  const name=r.lo==null?`below ${usd(r.hi+0.01)}`:r.hi==null?`above ${usd(r.lo)}`:`${usd(r.lo)}–${usd(r.hi+0.01)}`;
-  const mn=r.model_yes==null?null:1-r.model_yes;
-  const rule=r.yes_ok?'<span class="pill w">YES qualifies</span>':r.no_ok?'<span class="pill w">NO qualifies</span>':'<span class="mut">–</span>';
-  rows+=`<tr${inside?' style="font-weight:700"':''}><td>${name}${inside?' ◀ BTC now':''}</td><td>${cents(r.yes_bid)} / ${cents(r.yes_ask)}</td><td>${cents(r.model_yes)}</td><td>${edge(r.model_yes,r.yes_ask)}</td><td>${cents(r.no_ask)}</td><td>${cents(mn)}</td><td>${edge(mn,r.no_ask)}</td><td>${rule}</td></tr>`}
- if(!B.length)rows+='<tr><td colspan="8" class="mut">Loading Kalshi prices…</td></tr>';
- $('quotes').innerHTML=rows}
 function q15(){const R=D.q15||[],s=D.session||{};
  if(!R.length){$('q15y').textContent='–';$('q15n').textContent='–';return}
  const r=R[R.length-1];$('q15y').textContent=`${cents(r[1])} / ${cents(r[2])}`;
@@ -862,7 +866,30 @@ function q15(){const R=D.q15||[],s=D.session||{};
  for(const v of [0,.5,1]){g.beginPath();g.moveTo(4,Y(v));g.lineTo(w-36,Y(v));g.stroke();g.fillText(Math.round(v*100)+'¢',w-32,Y(v)+3)}
  g.fillText('YES ask this session',6,h-3);
  g.strokeStyle=css('--yes');g.lineWidth=1.6;g.beginPath();let f=true;for(const q of R){if(q[2]==null)continue;f?g.moveTo(X(q[0]),Y(q[2])):g.lineTo(X(q[0]),Y(q[2]));f=false}g.stroke()}
-function tables(px){quotes(px);q15();
+let TSIG='';
+function trades(){if(!H)return;const sig=JSON.stringify([H.range,H.buys]);if(sig===TSIG)return;TSIG=sig;
+ const R=[];
+ for(const r of H.range||[])R.push({t:r.t,bot:'Range',mkt:`hour to ${hm(r.close)} · ${r.lo==null?'':usd(r.lo)}–${r.hi==null?'':usd(r.hi+0.01)}`,
+  side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl});
+ for(const b of H.buys||[])R.push({t:b.t,bot:b.bot,mkt:`15 min to ${hm(Math.floor(b.t/900)*900+900)} · ${b.level||''}`,
+  side:b.side,n:b.n,price:b.price!=null?b.price:b.ask,model:null,status:b.status,pnl:b.pnl});
+ R.sort((a,b)=>a.t-b.t);
+ let cum=0;const W={};for(const k of ['Range','Breakdown','Fast push'])W[k]={w:0,l:0,o:0,p:0};
+ for(const r of R){const w=W[r.bot]||(W[r.bot]={w:0,l:0,o:0,p:0});
+  if(r.status==='open'){w.o++;r.cum=null;continue}
+  r.status==='won'?w.w++:w.l++;w.p+=r.pnl||0;cum+=r.pnl||0;r.cum=cum}
+ const mk=r=>r.bot==='Range'?'●':r.bot==='Breakdown'?'▲':'■';
+ $('wl').innerHTML=Object.entries(W).map(([k,v])=>{const n=v.w+v.l;
+  return `<span><b>${k}</b>: <span style="color:var(--win)">${v.w} won</span> / <span style="color:var(--lose)">${v.l} lost</span>${n?' ('+Math.round(v.w/n*100)+'% win)':''}${v.o?' · '+v.o+' open':''} · ${money(v.p)}</span>`}).join('');
+ $('tinfo').textContent=`${R.length} trades · total ${money(cum)} settled · newest first`;
+ let rows='<tr><th>Time (ET)</th><th>Bot</th><th>Market</th><th>Side</th><th>Contracts</th><th>Price</th><th>Model</th><th>Win/Loss</th><th>P/L</th><th>Cumulative P/L</th></tr>';
+ for(let i=R.length-1;i>=0;i--){const r=R[i];const d=new Date(r.t*1000).toLocaleDateString('en-US',{timeZone:'America/New_York',month:'numeric',day:'numeric'});
+  const res=r.status==='open'?'<span class="pill" style="color:var(--open)">open</span>':`<span class="pill ${r.status==='won'?'w':'l'}">${r.status==='won'?'Won':'Lost'}</span>`;
+  const pc=v=>v==null?'<span class="mut">–</span>':`<span style="color:var(${v>=0?'--win':'--lose'})">${money(v)}</span>`;
+  rows+=`<tr><td>${d} ${hm(r.t)}</td><td>${mk(r)} ${r.bot}</td><td>${r.mkt}</td><td>${r.side||''}</td><td>${r.n||''}</td><td>${r.price!=null?cents(r.price):'–'}</td><td>${r.model!=null?cents(r.model):'<span class="mut">–</span>'}</td><td>${res}</td><td>${pc(r.pnl)}</td><td>${pc(r.cum)}</td></tr>`}
+ if(!R.length)rows+='<tr><td colspan="10" class="mut">No trades yet.</td></tr>';
+ $('trades').innerHTML=rows}
+function tables(px){q15();trades();
  let rows='<tr><th>Bought (ET)</th><th>Side</th><th>Band</th><th>Contracts</th><th>Paid</th><th>Model</th><th>Now</th><th>Closes</th></tr>';
  const ps=D.range.open.filter(p=>p.lo!=null);
  for(const p of ps){if(px==null)break;const inside=px>=p.lo&&px<=p.hi,win=(p.side==='NO')!==inside;
