@@ -21,6 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .late_breakdown import KalshiClient
+from .range_paper import event_ticker
 
 log = logging.getLogger("kalshi_btc_bot")
 
@@ -149,6 +150,9 @@ class Dashboard:
         self.lock = threading.Lock()
         self.err = ""
         self._hours: dict[str, list] = {}
+        self.ladders: dict[int, list[float]] = {}   # hour close -> Kalshi range band edges
+        self._ladder_at: dict[int, float] = {}
+        self.first_ts: int | None = None
 
     def history(self, res: int = 5) -> dict:
         """Price history from the breakdown bot's hourly logs (closed hours are cached)."""
@@ -162,7 +166,41 @@ class Dashboard:
         with self.lock:
             live = sorted(self.prices)
             pts += [[t, self.prices[t]] for t in live[::res] if not pts or t > pts[-1][0]]
-        return {"prices": pts, **history_events(self.logs)}
+        if pts:
+            self.first_ts = pts[0][0]
+        lad = [[c, e] for c, e in sorted(self.ladders.items())]
+        return {"prices": pts, "ladders": lad, **history_events(self.logs)}
+
+    def fetch_ladder(self, close_ts: int) -> list[float]:
+        """Edges of every Kalshi hourly range band (KXBTC) for the hour that closes at close_ts."""
+        edges, cursor = set(), None
+        for _ in range(10):
+            j = self.k.get("/markets", event_ticker=event_ticker(close_ts), limit=200, **({"cursor": cursor} if cursor else {}))
+            for m in j.get("markets", []):
+                for key, add in (("floor_strike", 0.0), ("cap_strike", 0.01)):
+                    v = m.get(key)
+                    if v is not None:
+                        edges.add(float(round(float(v) + add)))
+            cursor = j.get("cursor")
+            if not cursor:
+                break
+        return sorted(edges)
+
+    def update_ladders(self, now: float):
+        """One Kalshi request per call at most: fill missing hours, refresh the current one every 10 min."""
+        cur = (int(now) // 3600 + 1) * 3600
+        start = ((self.first_ts or int(now)) // 3600 + 1) * 3600
+        todo = [c for c in range(start, cur + 1, 3600) if c not in self.ladders]
+        if not todo and now - self._ladder_at.get(cur, 0) > 600:
+            todo = [cur]
+        if not todo:
+            return
+        c = todo[-1]
+        try:
+            self.ladders[c] = self.fetch_ladder(c)
+            self._ladder_at[c] = now
+        except Exception as e:
+            self.err = f"range bands: {e}"
 
     def poll(self):
         now = time.time()
@@ -175,6 +213,7 @@ class Dashboard:
             self.err = ""
         except Exception as e:  # keep serving what we have
             self.err = f"price feed: {e}"
+        self.update_ladders(now)
         s = self.session
         if s is None or now >= s["close_ts"]:
             try:
@@ -259,9 +298,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--ladder:#8fb0d6;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--ladder:#4d6f96;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
@@ -295,7 +334,7 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 <div class="card">
 <div class="key"><span><i style="background:var(--no);opacity:.35"></i>range NO band</span><span><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
 <span>band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span>markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
-<span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
+<span><i style="background:var(--ladder)"></i>Kalshi hourly range band edges (dotted)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin (BRTI) and every trade</div><canvas id="c"></canvas>
 <div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas>
@@ -375,6 +414,11 @@ function draw(){
  for(let v=Math.ceil(lo/step)*step;v<=hi;v+=step){g.strokeStyle=css('--grid');g.beginPath();g.moveTo(L,Y(v));g.lineTo(w-R,Y(v));g.stroke();g.fillStyle=css('--mut');g.fillText(usd(v),4,Y(v)+4)}
  g.save();g.beginPath();g.rect(L,0,w-L-R,h);g.clip();
  const st={won:'--win',lost:'--lose',open:'--open'};
+ // Kalshi's hourly range bands (whether or not there is a trade): thin lines at each band edge
+ g.strokeStyle=css('--ladder');g.lineWidth=1;g.setLineDash([2,3]);
+ for(const [c,edges] of (H&&H.ladders||[])){if(c<tL||c-3600>tR)continue;const x0=X(c-3600),x1=X(c);
+  for(const e of edges){if(e<lo||e>hi)continue;const y=Math.round(Y(e))+.5;g.beginPath();g.moveTo(x0,y);g.lineTo(x1,y);g.stroke()}}
+ g.setLineDash([]);
  for(const r of rng){const x0=X(r.close-3600),x1=X(r.close),c=css(r.side==='NO'?'--no':'--yes');
   g.fillStyle=c;g.globalAlpha=.10;g.fillRect(x0,Y(r.hi),x1-x0,Y(r.lo)-Y(r.hi));g.globalAlpha=1;
   g.strokeStyle=css(st[r.status]);g.lineWidth=1.5;g.strokeRect(x0,Y(r.hi),x1-x0,Y(r.lo)-Y(r.hi));
