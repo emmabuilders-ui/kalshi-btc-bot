@@ -298,9 +298,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--ladder:#8fb0d6;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--ladder:#7fa3cf;--ladder-t:#5f7fa6;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--ladder:#4d6f96;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--ladder:#5b80ab;--ladder-t:#8fb0d6;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
@@ -334,7 +334,7 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 <div class="card">
 <div class="key"><span><i style="background:var(--no);opacity:.35"></i>range NO band</span><span><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
 <span>band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span>markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
-<span><i style="background:var(--ladder)"></i>Kalshi hourly range band edges (dotted)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
+<span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin (BRTI) and every trade</div><canvas id="c"></canvas>
 <div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas>
@@ -411,14 +411,20 @@ function draw(){
  timegrid(g,X,tL,tR,T,B,h,true);
  g.font='11px system-ui';
  const step=[5,10,20,25,50,100,200,250,500,1000,2000,5000].find(s=>(hi-lo)/s<=9)||10000;
- for(let v=Math.ceil(lo/step)*step;v<=hi;v+=step){g.strokeStyle=css('--grid');g.beginPath();g.moveTo(L,Y(v));g.lineTo(w-R,Y(v));g.stroke();g.fillStyle=css('--mut');g.fillText(usd(v),4,Y(v)+4)}
+ for(let v=Math.ceil(lo/step)*step;v<=hi;v+=step){g.strokeStyle=css('--mut');g.beginPath();g.moveTo(L-5,Y(v));g.lineTo(L,Y(v));g.stroke();g.fillStyle=css('--mut');g.fillText(usd(v),4,Y(v)+4)}
  g.save();g.beginPath();g.rect(L,0,w-L-R,h);g.clip();
  const st={won:'--win',lost:'--lose',open:'--open'};
- // Kalshi's hourly range bands (whether or not there is a trade): thin lines at each band edge
- g.strokeStyle=css('--ladder');g.lineWidth=1;g.setLineDash([2,3]);
+ // Kalshi's hourly range bands (whether or not there is a trade): alternate shading per band, edge lines, price labels
  for(const [c,edges] of (H&&H.ladders||[])){if(c<tL||c-3600>tR)continue;const x0=X(c-3600),x1=X(c);
-  for(const e of edges){if(e<lo||e>hi)continue;const y=Math.round(Y(e))+.5;g.beginPath();g.moveTo(x0,y);g.lineTo(x1,y);g.stroke()}}
- g.setLineDash([]);
+  const gaps=edges.slice(1).map((e,k)=>e-edges[k]).sort((a,b)=>a-b),med=gaps[gaps.length>>1]||100;
+  for(let k=0;k+1<edges.length;k++){const a=edges[k],b=edges[k+1];if(b<lo||a>hi||b-a>1.5*med)continue;
+   if(k%2===0){g.fillStyle=css('--ladder');g.globalAlpha=.13;g.fillRect(x0,Y(b),x1-x0,Y(a)-Y(b));g.globalAlpha=1}
+   if(ZOOMS[zi]>=64&&Y(a)-Y(b)>=13&&x1-x0>120){g.fillStyle=css('--ladder-t');g.font='10px system-ui';
+    const t=`${usd(a)}–${usd(b)}`,tx=Math.min(x1,w-R)-g.measureText(t).width-6;if(tx>=Math.max(x0,L)+4)g.fillText(t,tx,(Y(a)+Y(b))/2+3.5)}}
+  g.strokeStyle=css('--ladder');g.globalAlpha=.8;g.lineWidth=1;
+  for(const e of edges){if(e<lo||e>hi)continue;const y=Math.round(Y(e))+.5;g.beginPath();g.moveTo(x0,y);g.lineTo(x1,y);g.stroke()}
+  g.globalAlpha=1}
+
  for(const r of rng){const x0=X(r.close-3600),x1=X(r.close),c=css(r.side==='NO'?'--no':'--yes');
   g.fillStyle=c;g.globalAlpha=.10;g.fillRect(x0,Y(r.hi),x1-x0,Y(r.lo)-Y(r.hi));g.globalAlpha=1;
   g.strokeStyle=css(st[r.status]);g.lineWidth=1.5;g.strokeRect(x0,Y(r.hi),x1-x0,Y(r.lo)-Y(r.hi));
@@ -427,7 +433,7 @@ function draw(){
  for(const s of ses){g.beginPath();g.moveTo(X(s[0]),Y(s[1]));g.lineTo(X(s[0]+900),Y(s[1]));g.stroke()}
  
  g.strokeStyle=css('--line');g.lineWidth=1.3;g.beginPath();vis.forEach((p,i)=>{const x=X(p[0]),y=Y(p[1]);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
- const at=t=>{let a=0,b=P.length-1;while(a<b){const m=(a+b)>>1;P[m][0]<t?a=m+1:b=m}return P[a]?P[a][1]:null};
+ const at=t=>{let a=0,b=P.length-1;while(a<b){const m=(a+b)>>1;P[m][0]<t?a=m+1:b=m}return P[a]&&Math.abs(P[a][0]-t)<=60?P[a][1]:null};
  const placed=[],colMin=new Float32Array(Math.ceil(w)+2).fill(1e9),colMax=new Float32Array(Math.ceil(w)+2).fill(-1e9);
  for(let i=0;i<vis.length;i++){const x0=X(vis[i][0]),y0=Y(vis[i][1]),p1=vis[Math.min(i+1,vis.length-1)],x1=X(p1[0]),y1=Y(p1[1]);
   for(let c=Math.max(0,Math.floor(Math.min(x0,x1)));c<=Math.min(colMin.length-1,Math.ceil(Math.max(x0,x1)));c++){
@@ -453,7 +459,7 @@ function draw(){
     const sc=over(x,yy,tw,th);if(!best||sc<best[2])best=[x,yy,sc];if(sc===0)break}if(best[2]===0)break}
   return drawBox(best[0],best[1],tw,th,txt,col)};
  const full=ZOOMS[zi]>=128,short0=ZOOMS[zi]>=32;
- for(const r of rng){const y=at(r.t);if(y==null)continue;const x=X(r.t),yd=Y(y),col=css(st[r.status]),mid=Y((r.lo+r.hi)/2),short=short0&&x>=L&&x<=w-R;
+ for(const r of rng){const y=at(r.t)??(r.lo+r.hi)/2;const x=X(r.t),yd=Y(y),col=css(st[r.status]),mid=Y((r.lo+r.hi)/2),short=short0&&x>=L&&x<=w-R;
   const res=r.status==='open'?'OPEN':r.status.toUpperCase()+' '+money(r.pnl);
   const texts=[`${hm(r.t)} ${r.side} ${usd(r.lo)}–${usd(r.hi+0.01)} x${r.n} @${Math.round(r.price*100)}¢, model ${r.model?(r.model*100).toFixed(1):'?'}¢ → ${res}`,
    `${hm(r.t)} ${r.side} x${r.n} @${Math.round(r.price*100)}¢, model ${r.model?(r.model*100).toFixed(1):'?'}¢ → ${res}`,`${r.side} @${Math.round(r.price*100)}¢ ${res}`];
