@@ -179,23 +179,39 @@ RestartSec=30
 [Install]
 WantedBy=multi-user.target
 EOF
+cat > /etc/systemd/system/kalshi-dash.service <<EOF
+[Unit]
+Description=Live chart of the Kalshi PAPER traders (read-only web page)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=$USER_
+EnvironmentFile=$CONF/env
+ExecStart=$APP/.venv/bin/python -m kalshi_btc_bot dashboard --port 8080 --token-file $CONF/dash_token --breakdown $LOGS/breakdown --range $RANGE_LOGS/range --fastpush $FP_LOGS/fastpush
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
 systemctl daemon-reload
-systemctl enable -q kalshi-paper kalshi-range kalshi-fastpush
-systemctl restart kalshi-paper kalshi-range kalshi-fastpush
+systemctl enable -q kalshi-paper kalshi-range kalshi-fastpush kalshi-dash
+systemctl restart kalshi-paper kalshi-range kalshi-fastpush kalshi-dash
 
 cat > /usr/local/bin/kbot <<'EOF'
 #!/usr/bin/env bash
 # kbot status | log | update | stop | start | chart | touch COIN TF BARS [TARGET]
 case "${1:-status}" in
-  status) for u in kalshi-paper kalshi-range kalshi-fastpush; do systemctl --no-pager status $u | head -3; done
+  status) for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-dash; do systemctl --no-pager status $u | head -3; done
           echo "-- 15-min breakdown bot"; cat /opt/kalshi-logs/breakdown/status.json 2>/dev/null
           echo; echo "-- hourly range bot"; cat /opt/kalshi-logs-range/range/status.json 2>/dev/null
           echo; echo "-- fast-push bot"; cat /opt/kalshi-logs-fastpush/fastpush/status.json 2>/dev/null ;;
-  log)    for u in kalshi-paper kalshi-range kalshi-fastpush; do journalctl -u $u -n 20 --no-pager; done ;;
+  log)    for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-dash; do journalctl -u $u -n 20 --no-pager; done ;;
   update) curl -fsSL -H "Authorization: token $(cat /etc/kalshi-bot/github_token)" \
             "https://raw.githubusercontent.com/emmabuilders-ui/kalshi-btc-bot/${BRANCH:-main}/deploy/setup.sh" | bash ;;
-  stop)   systemctl stop kalshi-paper kalshi-range kalshi-fastpush ;;
-  start)  systemctl start kalshi-paper kalshi-range kalshi-fastpush ;;
+  stop)   systemctl stop kalshi-paper kalshi-range kalshi-fastpush kalshi-dash ;;
+  start)  systemctl start kalshi-paper kalshi-range kalshi-fastpush kalshi-dash ;;
   chart)  echo "Live chart: http://$(curl -fsS -4 https://api.ipify.org 2>/dev/null || hostname -I | cut -d' ' -f1):8080/$(cat /etc/kalshi-bot/dash_token)/" ;;
   touch)  shift; /opt/kalshi-btc-bot/.venv/bin/python -m kalshi_btc_bot touch "$@" ;;
   *) echo "usage: kbot status|log|update|stop|start|chart|touch COIN TF BARS [TARGET]" ;;
@@ -209,6 +225,6 @@ journalctl -u kalshi-paper -n 8 --no-pager || true
 journalctl -u kalshi-range -n 8 --no-pager || true
 journalctl -u kalshi-fastpush -n 8 --no-pager || true
 echo
-echo "Done. All three paper traders are running and restart by themselves after a reboot."
+echo "Done. All three paper traders and the live chart are running and restart by themselves after a reboot."
 echo "Commands:  kbot status   kbot log   kbot update   kbot chart   kbot touch BTC 1h 6 +1%"
 kbot chart
