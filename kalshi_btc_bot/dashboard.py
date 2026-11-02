@@ -584,7 +584,7 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 <div class="card">
 <div class="key"><span><i style="background:var(--no);opacity:.35"></i>range NO band</span><span><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
 <span>band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span>markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
-<span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>support</span><span><i style="background:var(--res)"></i>resistance (the levels the 15-min bots watch, recalculated every minute)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
+<span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin (BRTI) and every trade</div><canvas id="c"></canvas>
 <div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas>
@@ -702,7 +702,7 @@ function draw(){
   const flush=(k,e)=>{const o=open[k];if(!o)return;g.strokeStyle=css(o.side==='no'?'--sup':'--res');g.beginPath();g.moveTo(X(o.t0),Y(o.v));g.lineTo(X(e),Y(o.v));g.stroke();delete open[k]};
   for(let i=a;i<LVR.length&&LVR[i][0]<=tR;i++){const [t,lv]=LVR[i];
    for(const k in open){const n=lv[k];if(!n||n[1]!==open[k].v||n[0]!==open[k].side)flush(k,t)}
-   for(const k in lv){const [sd,v]=lv[k];if(v<lo||v>hi){if(open[k])flush(k,t);continue}if(!open[k])open[k]={t0:t,v,side:sd}}}
+   for(const k in lv){if(!k.startsWith('hard'))continue;const [sd,v]=lv[k];if(v<lo||v>hi){if(open[k])flush(k,t);continue}if(!open[k])open[k]={t0:t,v,side:sd}}}
   const tend=Math.min(tR,(LVR[LVR.length-1][0])+60);for(const k in open)flush(k,tend);
   g.globalAlpha=1;g.lineWidth=2.2;g.strokeStyle=css('--target')}
  
