@@ -1,0 +1,2 @@
+break_utc,ticker,side,level,level_price,secs_left,brti,strike,push,lag_s,ask,ask_size,book,book_utc,decision
+2026-11-02 02:28:42,KXBTC15M-26NOV012130-30,YES,prev15_high,78387.88,77,78393.7,78289.11,1.36,0.5,,,,2026-11-02 02:28:42,skip: push 1.36 < 2.0
