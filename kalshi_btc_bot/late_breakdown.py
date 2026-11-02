@@ -32,8 +32,11 @@ import json
 import logging
 import math
 import os
+import resource
+import signal
 import subprocess
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -402,6 +405,7 @@ class LateBreakdownPaper:
             "updated_utc": datetime.fromtimestamp(now, timezone.utc).isoformat(timespec="seconds"),
             "settled_trades": n, "wins": wins, "pnl_dollars": round(pnl, 2),
             "proxy_bias": round(self.series.bias, 2), "session": self.session.ticker if self.session else None,
+            "max_mem_mb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024,
             "note": note}, indent=1))
 
     def _push(self, now: float):
@@ -562,7 +566,29 @@ class LateBreakdownPaper:
         self._status(now)
 
     # -------------------------------------------------------------------------- loop
+    def _life(self, msg: str):
+        """One line per start/stop in crash.log (pushed with the other logs), to explain restarts."""
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
+        with (self.out / "crash.log").open("a") as f:
+            f.write(f"{_iso(time.time())} pid {os.getpid()} max_mem {rss}MB: {msg}\n")
+
     def run(self, seconds: float | None = None):
+        """Run the paper loop, recording why it stops (signal, error with traceback, or normal end)."""
+        def on_signal(num, frame):
+            raise SystemExit(f"stopped by {signal.Signals(num).name}")
+        signal.signal(signal.SIGTERM, on_signal)
+        self._life("start")
+        try:
+            self._loop(seconds)
+        except SystemExit as e:
+            self._life(str(e) or "exit")
+            raise
+        except BaseException:
+            self._life("crashed:\n" + traceback.format_exc())
+            raise
+        self._life("finished")
+
+    def _loop(self, seconds: float | None = None):
         start = int(time.time())
         self.warm_up(start)
         while seconds is None or time.time() - start < seconds:

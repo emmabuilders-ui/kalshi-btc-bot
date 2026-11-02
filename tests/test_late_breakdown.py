@@ -101,3 +101,17 @@ def test_step_buys_yes_on_late_breakout(tmp_path):
     assert bot.unsettled[0]["avg_price"] == 0.8 and bot.unsettled[0]["contracts"] == 25
     bot.settle(o + 1000)
     assert ",yes,1," in (tmp_path / "trades.csv").read_text().splitlines()[1]
+
+
+def test_run_records_crash_in_log(tmp_path):
+    import pytest
+    from kalshi_btc_bot.late_breakdown import LateBreakdownPaper
+
+    bot = LateBreakdownPaper(tmp_path)
+    def boom(seconds=None):
+        raise RuntimeError("feed died")
+    bot._loop = boom
+    with pytest.raises(RuntimeError):
+        bot.run(1)
+    log = (tmp_path / "crash.log").read_text()
+    assert ": start" in log and "crashed:" in log and "RuntimeError: feed died" in log
