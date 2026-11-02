@@ -3,6 +3,7 @@
 #   kalshi-paper  late-breakdown rule on the 15-minute markets (logs: paper-logs branch)
 #   kalshi-range  hourly Bitcoin range rule (logs: paper-logs-range branch)
 #   kalshi-fastpush  fast-push level breaks on the 15-minute markets (logs: paper-logs-fastpush branch)
+#   kalshi-dash   live chart of all three at http://<server-ip>:8080/<secret>/  (kbot chart prints the link)
 # No orders are ever sent. Run as root:  bash setup.sh
 # It asks for: a GitHub token (read/write to this repo), the Kalshi API key ID, and the
 # Kalshi private key (paste it). Re-running it is safe: it updates the code and restarts.
@@ -39,6 +40,7 @@ if [ ! -s "$CONF/key.pem" ]; then
     [[ "$line" == *"-----END"* ]] && break
   done
 fi
+[ -s "$CONF/dash_token" ] || head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$CONF/dash_token"
 GH=$(cat "$CONF/github_token")
 
 echo "== Installing system packages"
@@ -183,7 +185,7 @@ systemctl restart kalshi-paper kalshi-range kalshi-fastpush
 
 cat > /usr/local/bin/kbot <<'EOF'
 #!/usr/bin/env bash
-# kbot status | log | update | stop | start | touch COIN TF BARS [TARGET]
+# kbot status | log | update | stop | start | chart | touch COIN TF BARS [TARGET]
 case "${1:-status}" in
   status) for u in kalshi-paper kalshi-range kalshi-fastpush; do systemctl --no-pager status $u | head -3; done
           echo "-- 15-min breakdown bot"; cat /opt/kalshi-logs/breakdown/status.json 2>/dev/null
@@ -194,8 +196,9 @@ case "${1:-status}" in
             "https://raw.githubusercontent.com/emmabuilders-ui/kalshi-btc-bot/${BRANCH:-main}/deploy/setup.sh" | bash ;;
   stop)   systemctl stop kalshi-paper kalshi-range kalshi-fastpush ;;
   start)  systemctl start kalshi-paper kalshi-range kalshi-fastpush ;;
+  chart)  echo "Live chart: http://$(curl -fsS -4 https://api.ipify.org 2>/dev/null || hostname -I | cut -d' ' -f1):8080/$(cat /etc/kalshi-bot/dash_token)/" ;;
   touch)  shift; /opt/kalshi-btc-bot/.venv/bin/python -m kalshi_btc_bot touch "$@" ;;
-  *) echo "usage: kbot status|log|update|stop|start|touch COIN TF BARS [TARGET]" ;;
+  *) echo "usage: kbot status|log|update|stop|start|chart|touch COIN TF BARS [TARGET]" ;;
 esac
 EOF
 chmod +x /usr/local/bin/kbot
@@ -207,4 +210,5 @@ journalctl -u kalshi-range -n 8 --no-pager || true
 journalctl -u kalshi-fastpush -n 8 --no-pager || true
 echo
 echo "Done. All three paper traders are running and restart by themselves after a reboot."
-echo "Commands:  kbot status   kbot log   kbot update   kbot touch BTC 1h 6 +1%"
+echo "Commands:  kbot status   kbot log   kbot update   kbot chart   kbot touch BTC 1h 6 +1%"
+kbot chart
