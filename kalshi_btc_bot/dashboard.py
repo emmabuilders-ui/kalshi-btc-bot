@@ -20,12 +20,15 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import numpy as np
+
 from .late_breakdown import KalshiClient
-from .range_paper import event_ticker
+from .range_paper import N_BANDS, RangeModel, _f, band_mid, event_ticker, qualifies
 
 log = logging.getLogger("kalshi_btc_bot")
 
 KEEP = 3900          # seconds of price history to serve (a bit over one hour)
+HOLD = 3 * 3600      # seconds kept in memory (the range model needs 100 one-minute closes)
 
 
 def _rows(path: Path) -> list[dict]:
@@ -160,6 +163,19 @@ def history_events(L: dict[str, Path]) -> dict:
     return {"range": rng, "sessions": sessions, "levels": levels, "buys": buys}
 
 
+def current_levels(L: dict[str, Path], s: dict) -> list:
+    """Support/resistance for the 15-minute session now running, as the fast-push bot logged them at its open."""
+    if not s.get("open_ts"):
+        return []
+    for r in reversed(_rows(L["fastpush"] / "sessions.csv")):
+        if r.get("open_utc") and _ts(r["open_utc"]) == s["open_ts"]:
+            try:
+                return [s["open_ts"], [[k, v[0], float(v[1])] for k, v in json.loads(r["levels"]).items()]]
+            except (ValueError, KeyError, TypeError):
+                return []
+    return []
+
+
 class Dashboard:
     def __init__(self, logs: dict[str, Path], key_id=None, key_path=None):
         self.k = KalshiClient(key_id, key_path)
@@ -172,6 +188,10 @@ class Dashboard:
         self.ladders: dict[int, list[float]] = {}   # hour close -> Kalshi range band edges
         self._ladder_at: dict[int, float] = {}
         self.first_ts: int | None = None
+        self.model = RangeModel()
+        self.quotes: dict = {}
+        self.q15: list[list] = []     # [t, yes_bid, yes_ask] for the current 15-minute contract
+        self._quotes_at = 0.0
 
     def history(self, res: int = 5) -> dict:
         """Price history from the breakdown bot's hourly logs (closed hours are cached)."""
@@ -205,6 +225,53 @@ class Dashboard:
                 break
         return sorted(edges)
 
+    def warm_up(self, now: float):
+        """Load the last two hours of BRTI so the range model has its 100 minutes of history at once."""
+        for h in range((int(now) - 2 * 3600) // 3600 * 3600, int(now) // 3600 * 3600 + 1, 3600):
+            try:
+                got = self.k.brti_hour(h)
+                with self.lock:
+                    self.prices.update(got)
+            except Exception as e:
+                log.warning("BRTI history %s failed: %s", h, e)
+
+    def _price_at(self, t: int) -> float | None:
+        for u in range(t, t - 30, -1):
+            if u in self.prices:
+                return self.prices[u]
+        return None
+
+    def range_quotes(self, now: float) -> dict:
+        """Kalshi's price and the range model's value for the bands nearest the price, this hour."""
+        close = (int(now) // 3600 + 1) * 3600
+        t = int(now)
+        with self.lock:
+            last = max(self.prices) if self.prices else None
+            price = self._price_at(last) if last else None
+            closes = [self._price_at(t - 1 - 60 * (100 - k)) for k in range(101)]
+        if price is None:
+            return {}
+        left = max(1, (close - t) // 60)
+        v = self.model.vol(np.array(closes)) if None not in closes else None
+        markets = self.k.get("/markets", event_ticker=event_ticker(close), limit=1000).get("markets", [])
+        markets = [m for m in markets if m.get("status") in ("active", "open")]
+        markets = sorted(markets, key=lambda m: abs(band_mid(m) - price))[:N_BANDS]
+        rows = []
+        for m in sorted(markets, key=band_mid, reverse=True):
+            lo, hi = _f(m.get("floor_strike")), _f(m.get("cap_strike"))
+            if m.get("strike_type") == "greater":
+                hi = None
+            elif m.get("strike_type") == "less":
+                lo = None
+            yb, ya = _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars"))
+            p = self.model.p_inside(price, lo, hi, left, *v) if v else None
+            no_ask = round(1 - yb, 4) if yb else None
+            rows.append({"ticker": m["ticker"], "lo": lo, "hi": hi, "yes_bid": yb, "yes_ask": ya, "no_ask": no_ask,
+                         "model_yes": None if p is None else round(p, 4),
+                         "yes_ok": bool(p is not None and left <= 30 and qualifies(p, ya)),
+                         "no_ok": bool(p is not None and left <= 30 and qualifies(1 - p, no_ask))})
+        return {"close": close, "mins_left": left, "price": price, "at": t, "bands": rows}
+
     def update_ladders(self, now: float):
         """One Kalshi request per call at most: fill missing hours, refresh the current one every 10 min."""
         cur = (int(now) // 3600 + 1) * 3600
@@ -227,12 +294,28 @@ class Dashboard:
             got = self.k.brti_live()
             with self.lock:
                 self.prices.update(got)
-                for t in [t for t in self.prices if t < now - KEEP]:
+                for t in [t for t in self.prices if t < now - HOLD]:
                     del self.prices[t]
             self.err = ""
         except Exception as e:  # keep serving what we have
             self.err = f"price feed: {e}"
         self.update_ladders(now)
+        s15 = self.session
+        if s15:
+            try:
+                m = self.k.get(f"/markets/{s15['ticker']}")["market"]
+                row = [int(now), _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars"))]
+                if self.q15 and self.q15[0][0] < s15["open_ts"]:
+                    self.q15 = []
+                self.q15.append(row)
+            except Exception as e:
+                self.err = f"15-min price: {e}"
+        if now - self._quotes_at >= 10:
+            self._quotes_at = now
+            try:
+                self.quotes = self.range_quotes(now)
+            except Exception as e:
+                self.err = f"range prices: {e}"
         s = self.session
         if s is None or now >= s["close_ts"]:
             try:
@@ -248,7 +331,8 @@ class Dashboard:
 
     def data(self) -> dict:
         with self.lock:
-            ts = sorted(self.prices)
+            cut = time.time() - KEEP
+            ts = sorted(t for t in self.prices if t >= cut)
             pts = [[t, self.prices[t]] for t in ts]
         L = self.logs
         s = self.session or {}
@@ -259,7 +343,7 @@ class Dashboard:
             "now": time.time(), "prices": pts, "error": self.err, "hour_close": hour_close,
             "range": {"open": range_positions(L["range"]),
                       "settled": settled_summary(_rows(L["range"] / "trades.csv"))},
-            "session": s,
+            "session": s, "quotes": self.quotes, "q15": self.q15, "levels_now": current_levels(L, s),
             "buys": session_buys(bd, s.get("ticker"), "Breakdown") + session_buys(fp, s.get("ticker"), "Fast push"),
             "pnl": sorted(pnl_points(_rows(L["range"] / "trades.csv"), "Range")
                           + pnl_points(_rows(L["breakdown"] / "trades.csv"), "Breakdown")
@@ -305,6 +389,7 @@ def make_handler(dash: Dashboard, token: str):
 
 def serve(port: int, token: str, logs: dict[str, Path]):
     dash = Dashboard(logs, os.environ.get("KALSHI_KEY_ID"), os.environ.get("KALSHI_KEY_FILE"))
+    dash.warm_up(time.time())
     dash.poll()
     threading.Thread(target=dash.loop, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", port), make_handler(dash, token))
@@ -360,8 +445,11 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 </div></div></div>
 <div class="mut" style="font-size:12px;margin-top:4px">Scroll sideways (or drag the scrollbar) to go back through the full history. Both graphs move together.</div>
 </div>
+<div class="card scroll" style="margin-top:12px"><b>Range bands this hour: Kalshi price vs model</b> <span class="mut" id="qinfo"></span><table id="quotes"></table></div>
 <div class="card scroll" style="margin-top:12px"><b>Open range positions</b><table id="pos"></table></div>
-<div class="card scroll" style="margin-top:12px"><b>15-minute bots, this session</b><table id="pos15"></table></div>
+<div class="card scroll" style="margin-top:12px"><b>15-minute contract now</b> <span class="mut" id="q15info"></span>
+<div style="display:flex;flex-wrap:wrap;gap:8px 28px;align-items:center;margin:8px 0"><div><div class="mut">YES bid / ask</div><div class="big" id="q15y"></div></div><div><div class="mut">NO bid / ask</div><div class="big" id="q15n"></div></div><canvas id="q15c" style="flex:1;min-width:260px;height:90px"></canvas></div>
+<b>15-minute bots, this session</b><table id="pos15"></table></div>
 <div class="grid">
 <div class="card"><div class="mut">Range bot, settled</div><div class="big" id="sr"></div></div>
 <div class="card"><div class="mut">Breakdown bot, settled</div><div class="big" id="sb"></div></div>
@@ -447,7 +535,7 @@ function draw(){
   for(let k=0;k+1<edges.length;k++){const a=edges[k],b=edges[k+1];if(b<lo||a>hi||b-a>1.5*med)continue;
    if(k%2===0){g.fillStyle=css('--ladder');g.globalAlpha=.13;g.fillRect(x0,Y(b),x1-x0,Y(a)-Y(b));g.globalAlpha=1}
    if(ZOOMS[zi]>=64&&Y(a)-Y(b)>=13&&x1-x0>120){g.fillStyle=css('--ladder-t');g.font='10px system-ui';
-    const t=`${usd(a)}–${usd(b)}`,tx=Math.min(x1,w-R)-g.measureText(t).width-6;if(tx>=Math.max(x0,L)+4)g.fillText(t,tx,(Y(a)+Y(b))/2+3.5)}}
+    const q=bandQ(c,a,b),t=`${usd(a)}–${usd(b)}`+(q?`   Kalshi ${q.yes_ask!=null?Math.round(q.yes_ask*100)+'¢':'–'} · model ${q.model_yes!=null?Math.round(q.model_yes*100)+'¢':'–'}`:''),tx=Math.min(x1,w-R)-g.measureText(t).width-6;if(tx>=Math.max(x0,L)+4)g.fillText(t,tx,(Y(a)+Y(b))/2+3.5)}}
   g.strokeStyle=css('--ladder');g.globalAlpha=.8;g.lineWidth=1;
   for(const e of edges){if(e<lo||e>hi)continue;const y=Math.round(Y(e))+.5;g.beginPath();g.moveTo(x0,y);g.lineTo(x1,y);g.stroke()}
   g.globalAlpha=1}
@@ -458,7 +546,8 @@ function draw(){
 }
  g.strokeStyle=css('--target');g.lineWidth=2.2;
  for(const s of ses){g.beginPath();g.moveTo(X(s[0]),Y(s[1]));g.lineTo(X(s[0]+900),Y(s[1]));g.stroke()}
- if(showLv){g.lineWidth=1.2;for(const [t0,lvs] of (H&&H.levels||[])){if(t0+900<tL||t0>tR)continue;
+ if(showLv){g.lineWidth=1.2;const LV=(H&&H.levels||[]).filter(x=>!(D.levels_now&&D.levels_now[0]===x[0])).concat(D.levels_now&&D.levels_now.length?[D.levels_now]:[]);
+  for(const [t0,lvs] of LV){if(t0+900<tL||t0>tR)continue;
   for(const [name,side,v] of lvs){if(v<lo||v>hi)continue;g.strokeStyle=css(side==='no'?'--sup':'--res');g.globalAlpha=.75;
    g.beginPath();g.moveTo(X(t0),Y(v));g.lineTo(X(t0+900),Y(v));g.stroke();g.globalAlpha=1}}
   g.lineWidth=2.2;g.strokeStyle=css('--target')}
@@ -536,7 +625,32 @@ function plchart(tL,tR){
  g.restore();
  $('pl-legend').innerHTML=leg.join(' &nbsp; ')+' &nbsp; red marker = losing trade';
 }
-function tables(px){
+function bandQ(c,a,b){const Q=D&&D.quotes;if(!Q||Q.close!==c)return null;
+ return (Q.bands||[]).find(r=>r.lo!=null&&r.hi!=null&&Math.abs(r.lo-a)<1&&Math.abs(r.hi+0.01-b)<1)||null}
+const cents=x=>{if(x==null)return '–';const c=Math.round(x*1000)/10;return (Number.isInteger(c)?c:c.toFixed(1))+'¢'};
+const edge=(m,a)=>{if(m==null||a==null)return '<span class="mut">–</span>';const e=Math.round((m-a)*1000)/10;return `<span style="color:var(${e>0?'--win':'--mut'})">${e>0?'+':''}${e.toFixed(1)}¢</span>`};
+function quotes(px){const Q=D.quotes||{};const B=Q.bands||[];
+ $('qinfo').textContent=B.length?`${Q.mins_left} min left · BTC ${usd(Q.price)} · updated ${hms(Q.at)} ET`+(Q.mins_left>30?' · the bot only buys from 30 min left':''):'';
+ let rows='<tr><th>Band</th><th>Kalshi YES bid / ask</th><th>Model YES</th><th>YES edge</th><th>Kalshi NO ask</th><th>Model NO</th><th>NO edge</th><th>Rule</th></tr>';
+ for(const r of B){const inside=px!=null&&(r.lo==null||px>=r.lo)&&(r.hi==null||px<=r.hi+0.01);
+  const name=r.lo==null?`below ${usd(r.hi+0.01)}`:r.hi==null?`above ${usd(r.lo)}`:`${usd(r.lo)}–${usd(r.hi+0.01)}`;
+  const mn=r.model_yes==null?null:1-r.model_yes;
+  const rule=r.yes_ok?'<span class="pill w">YES qualifies</span>':r.no_ok?'<span class="pill w">NO qualifies</span>':'<span class="mut">–</span>';
+  rows+=`<tr${inside?' style="font-weight:700"':''}><td>${name}${inside?' ◀ BTC now':''}</td><td>${cents(r.yes_bid)} / ${cents(r.yes_ask)}</td><td>${cents(r.model_yes)}</td><td>${edge(r.model_yes,r.yes_ask)}</td><td>${cents(r.no_ask)}</td><td>${cents(mn)}</td><td>${edge(mn,r.no_ask)}</td><td>${rule}</td></tr>`}
+ if(!B.length)rows+='<tr><td colspan="8" class="mut">Loading Kalshi prices…</td></tr>';
+ $('quotes').innerHTML=rows}
+function q15(){const R=D.q15||[],s=D.session||{};
+ if(!R.length){$('q15y').textContent='–';$('q15n').textContent='–';return}
+ const r=R[R.length-1];$('q15y').textContent=`${cents(r[1])} / ${cents(r[2])}`;
+ $('q15n').textContent=`${r[2]!=null?cents(1-r[2]):'–'} / ${r[1]!=null?cents(1-r[1]):'–'}`;
+ $('q15info').textContent=s.ticker?`target ${usd(s.strike)} · closes ${hm(s.close_ts)} ET · BTC is ${P.length&&P[P.length-1][1]>s.strike?'above':'below'} the target`:'';
+ const cv=$('q15c'),dpr=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;cv.width=w*dpr;cv.height=h*dpr;const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);
+ const t0=s.open_ts||R[0][0],t1=s.close_ts||R[R.length-1][0],X=t=>4+(t-t0)/(t1-t0)*(w-40),Y=v=>4+(1-v)*(h-18);
+ g.strokeStyle=css('--grid');g.font='10px system-ui';g.fillStyle=css('--mut');
+ for(const v of [0,.5,1]){g.beginPath();g.moveTo(4,Y(v));g.lineTo(w-36,Y(v));g.stroke();g.fillText(Math.round(v*100)+'¢',w-32,Y(v)+3)}
+ g.fillText('YES ask this session',6,h-3);
+ g.strokeStyle=css('--yes');g.lineWidth=1.6;g.beginPath();let f=true;for(const q of R){if(q[2]==null)continue;f?g.moveTo(X(q[0]),Y(q[2])):g.lineTo(X(q[0]),Y(q[2]));f=false}g.stroke()}
+function tables(px){quotes(px);q15();
  let rows='<tr><th>Bought (ET)</th><th>Side</th><th>Band</th><th>Contracts</th><th>Paid</th><th>Model</th><th>Now</th><th>Closes</th></tr>';
  const ps=D.range.open.filter(p=>p.lo!=null);
  for(const p of ps){if(px==null)break;const inside=px>=p.lo&&px<=p.hi,win=(p.side==='NO')!==inside;
