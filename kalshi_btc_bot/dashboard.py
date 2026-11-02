@@ -569,9 +569,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--buyzone:#14632f;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--raw:#b9bec5;--buyzone:#14632f;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--buyzone:#3fbf6a;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--raw:#555c65;--buyzone:#3fbf6a;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
@@ -598,7 +598,7 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 .key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--mut)}
 .key i{display:inline-block;width:12px;height:10px;margin-right:4px;vertical-align:middle;border-radius:2px}
 </style></head><body><div class="wrap">
-<div class="top"><h1>Paper bots, live</h1><span class="px" id="px">…</span>
+<div class="top"><h1>Paper bots, live</h1><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
 <div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button>
 <span class="mut" id="zinfo"></span></div>
@@ -607,7 +607,7 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 <span>band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span>markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
 <span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
-<div class="lbl">Bitcoin (BRTI) and every trade</div><canvas id="c"></canvas>
+<div class="lbl">Bitcoin: 60-second BRTI average (black, what Kalshi settles on), BRTI each second (light gray), and every trade</div><canvas id="c"></canvas>
 <div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas>
 </div></div></div>
 <div class="mut" style="font-size:12px;margin-top:4px">Scroll sideways (or drag the scrollbar) to go back through the full history. Both graphs move together.</div>
@@ -647,6 +647,10 @@ function pps(){return ZOOMS[zi]/900}
 function range(){const first=Math.min(P.length?P[0][0]:D.now,...(H?H.range.map(r=>r.close-3600):[]));
  return [Math.floor(first/900)*900,Math.ceil(D.now/900)*900+300]}
 function sum(id,s){$(id).textContent=s.trades?`${s.wins}/${s.trades} won, ${money(s.pnl)}`:'no trades yet'}
+// trailing 60-second average of BRTI at each price point (Kalshi settles on the average of the 60 seconds before the close)
+function avg60(tL,tR){let a=0;while(a<P.length&&P[a][0]<tL-120)a++;const out=[];let j=a,sum=0,n=0;
+ for(let i=a;i<P.length&&P[i][0]<=tR+60;i++){sum+=P[i][1];n++;while(P[j][0]<=P[i][0]-60){sum-=P[j][1];n--;j++}
+  if(P[i][0]>=tL-60)out.push([P[i][0],P[i][0]-P[j][0]>=40||i-j>=50?sum/n:null])}return out}
 function merge(pts){if(!pts.length)return;const last=P.length?P[P.length-1][0]:0;for(const p of pts)if(p[0]>last)P.push(p)}
 async function loadHistory(){try{const r=await fetch('history.json',{cache:'no-store'});H=await r.json();
  const live=P.filter(p=>p[0]>(H.prices.length?H.prices[H.prices.length-1][0]:0));P=H.prices.concat(live);layout()}catch(e){}}
@@ -677,7 +681,7 @@ function timegrid(g,X,tL,tR,T,B,h,labels){
     const d=new Date(t*1000);g.fillText(day?fDay.format(d):hm(t),X(t)-14,h-6)}}}}
 function draw(){
  if(!D)return;
- const last=P.length?P[P.length-1]:null;if(last)$('px').textContent=usd(last[1]);
+ const last=P.length?P[P.length-1]:null;if(last){const a=avg60(last[0]-1,last[0]).at(-1);$('px').textContent=a&&a[1]!=null?usd(a[1]):usd(last[1]);$('pxraw').textContent=`60-s average · BRTI now ${usd(last[1])}`}
  $('err').textContent=D.error||'';
  $('clock').textContent=`${last?hms(last[0]):''} ET · 15-min closes ${hm(D.session&&D.session.close_ts||0)} · hour closes ${hm(D.hour_close)}`;
  $('zinfo').textContent=`${Math.round(sc.clientWidth/pps()/3600*10)/10} hours on screen`;
@@ -727,7 +731,10 @@ function draw(){
   const tend=Math.min(tR,(LVR[LVR.length-1][0])+60);for(const k in open)flush(k,tend);
   g.globalAlpha=1;g.lineWidth=2.2;g.strokeStyle=css('--target')}
  
- g.strokeStyle=css('--line');g.lineWidth=1.3;g.beginPath();vis.forEach((p,i)=>{const x=X(p[0]),y=Y(p[1]);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
+ // BRTI itself in light gray, the 60-second average (what Kalshi settles on) as the main line
+ g.strokeStyle=css('--raw');g.lineWidth=1;g.beginPath();vis.forEach((p,i)=>{const x=X(p[0]),y=Y(p[1]);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
+ const av=avg60(tL,tR);g.strokeStyle=css('--line');g.lineWidth=1.6;g.beginPath();let pen=false;
+ for(const [t,v] of av){if(v==null){pen=false;continue}const x=X(t),y=Y(v);pen?g.lineTo(x,y):g.moveTo(x,y);pen=true}g.stroke();
  const at=t=>{let a=0,b=P.length-1;while(a<b){const m=(a+b)>>1;P[m][0]<t?a=m+1:b=m}return P[a]&&Math.abs(P[a][0]-t)<=60?P[a][1]:null};
  const placed=[],colMin=new Float32Array(Math.ceil(w)+2).fill(1e9),colMax=new Float32Array(Math.ceil(w)+2).fill(-1e9);
  for(let i=0;i<vis.length;i++){const x0=X(vis[i][0]),y0=Y(vis[i][1]),p1=vis[Math.min(i+1,vis.length-1)],x1=X(p1[0]),y1=Y(p1[1]);
@@ -779,7 +786,7 @@ function draw(){
   const lft=S.close_ts-last[0],buy=lft>=60&&lft<180;  // both 15-min bots buy only with 1-3 minutes left
   g.strokeStyle=css(buy?'--buyzone':'--target');g.lineWidth=buy?1.5:1;g.strokeRect(x+.5,y+.5,tw-1,th-1);
   g.fillStyle=css(buy?'--buyzone':'--fg');g.fillText(l1,x+3,y+9.5);g.fillText(l2,x+3,y+19)}
- if(last&&last[0]>=tL&&last[0]<=tR){g.fillStyle=css('--fg');g.beginPath();g.arc(X(last[0]),Y(last[1]),4,0,7);g.fill()}
+ if(last&&last[0]>=tL&&last[0]<=tR){const la=av.length?av[av.length-1][1]:null;g.fillStyle=css('--fg');g.beginPath();g.arc(X(last[0]),Y(la??last[1]),4,0,7);g.fill()}
  g.restore();
  plchart(tL,tR);tables(last?last[1]:null);
 }
