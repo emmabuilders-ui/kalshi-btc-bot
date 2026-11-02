@@ -127,6 +127,25 @@ def history_events(L: dict[str, Path]) -> dict:
         k = _num(r.get("strike"))
         if k and r.get("open_utc"):
             sessions.append([_ts(r["open_utc"]), k])
+    # support (below the price at open) and resistance (above) levels per 15-minute session
+    lv: dict[int, list] = {}
+    for r in _rows(L["breakdown"] / "sessions.csv"):
+        if not r.get("open_utc"):
+            continue
+        out = []
+        for name, side in (("hard_bottom", "no"), ("prev15_low", "no"), ("hard_top", "yes"), ("prev15_high", "yes")):
+            v = _num(r.get(name))
+            if v:
+                out.append([name, side, v])
+        lv[_ts(r["open_utc"])] = out
+    for r in _rows(L["fastpush"] / "sessions.csv"):
+        try:
+            d = json.loads(r.get("levels") or "{}")
+        except ValueError:
+            continue
+        if r.get("open_utc") and d:
+            lv[_ts(r["open_utc"])] = [[k, v[0], float(v[1])] for k, v in d.items()]
+    levels = [[t, lv[t]] for t in sorted(lv)]
     buys = []
     for bot, key in (("Breakdown", "breakdown"), ("Fast push", "fastpush")):
         res = {(r.get("ticker"), r.get("side")): r for r in _rows(L[key] / "trades.csv")}
@@ -138,7 +157,7 @@ def history_events(L: dict[str, Path]) -> dict:
             buys.append({"bot": bot, "t": _ts(r.get("break_utc") or r["time_utc"]), "side": r.get("side"),
                          "level": r.get("level"), "ask": _num(r.get("ask")), "status": st,
                          "pnl": _num(tr.get("pnl")) if tr else None})
-    return {"range": rng, "sessions": sessions, "buys": buys}
+    return {"range": rng, "sessions": sessions, "levels": levels, "buys": buys}
 
 
 class Dashboard:
@@ -298,9 +317,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--ladder:#7fa3cf;--ladder-t:#5f7fa6;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#5f7fa6;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--ladder:#5b80ab;--ladder-t:#8fb0d6;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#8fb0d6;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
@@ -329,12 +348,12 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 </style></head><body><div class="wrap">
 <div class="top"><h1>Paper bots, live</h1><span class="px" id="px">…</span>
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
-<div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button>
+<div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button>
 <span class="mut" id="zinfo"></span></div>
 <div class="card">
 <div class="key"><span><i style="background:var(--no);opacity:.35"></i>range NO band</span><span><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
 <span>band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span>markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
-<span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
+<span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>support</span><span><i style="background:var(--res)"></i>resistance (levels the 15-min bots watch)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin (BRTI) and every trade</div><canvas id="c"></canvas>
 <div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas>
@@ -356,8 +375,15 @@ const ZOOMS=[16,32,64,128,256,512];let zi=3;  // pixels per 15 minutes
 let follow=true;
 const $=id=>document.getElementById(id);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const hm=t=>new Date(t*1000).toISOString().slice(11,16);
-const hms=t=>new Date(t*1000).toISOString().slice(11,19);
+// all times shown in US Eastern time (EST/EDT handled by the browser)
+const TZ='America/New_York';
+const fHM=new Intl.DateTimeFormat('en-US',{timeZone:TZ,hour:'numeric',minute:'2-digit',hour12:true});
+const fHMS=new Intl.DateTimeFormat('en-US',{timeZone:TZ,hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true});
+const fDay=new Intl.DateTimeFormat('en-US',{timeZone:TZ,weekday:'short',month:'short',day:'numeric'});
+const fH=new Intl.DateTimeFormat('en-US',{timeZone:TZ,hour:'numeric',minute:'numeric',hour12:false});
+const hm=t=>fHM.format(new Date(t*1000)).replace(' AM','a').replace(' PM','p');
+const hms=t=>fHMS.format(new Date(t*1000));
+const etMidnight=t=>{const [h,m]=fH.format(new Date(t*1000)).split(':').map(Number);return (h%24)===0&&m===0};
 const money=x=>(x<0?'-$':'+$')+Math.abs(x).toFixed(2);
 const usd=x=>'$'+x.toLocaleString('en-US',{maximumFractionDigits:0});
 const tsOf=s=>Date.parse(s.replace(' ','T')+'Z')/1000;
@@ -381,20 +407,21 @@ function zoom(d){if(!D)return;const [T0]=range();const mid=T0+(sc.scrollLeft+sc.
 $('zin').onclick=()=>zoom(1);$('zout').onclick=()=>zoom(-1);
 $('back').onclick=()=>{follow=false;sc.scrollLeft-=3600*pps()};
 $('live').onclick=()=>{follow=true;layout()};
+let showLv=true;$('lvbtn').onclick=()=>{showLv=!showLv;$('lvbtn').textContent=(showLv?'Hide':'Show')+' support/resistance';draw()};
 addEventListener('resize',layout);
 function setup(cv,h){const dpr=devicePixelRatio||1,w=$('stick').clientWidth;cv.style.width=w+'px';cv.style.height=h+'px';
  cv.width=w*dpr;cv.height=h*dpr;const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);return [g,w]}
 function timegrid(g,X,tL,tR,T,B,h,labels){
- for(let t=Math.floor(tL/900)*900;t<=tR;t+=900){const hr=t%3600===0,day=t%86400===0;
+ for(let t=Math.floor(tL/900)*900;t<=tR;t+=900){const hr=t%3600===0,day=hr&&etMidnight(t);
   g.strokeStyle=css(hr?'--grid2':'--grid');g.lineWidth=1;g.beginPath();g.moveTo(X(t),T);g.lineTo(X(t),h-B);g.stroke();
   if(labels){const every=ZOOMS[zi]>=64?900:ZOOMS[zi]>=32?3600:10800;
    if(t%every===0||day){g.fillStyle=css(day?'--fg':'--mut');g.font=(day||hr?'600 ':'')+'11px system-ui';
-    const d=new Date(t*1000);g.fillText(day?d.toUTCString().slice(5,11):hm(t),X(t)-14,h-6)}}}}
+    const d=new Date(t*1000);g.fillText(day?fDay.format(d):hm(t),X(t)-14,h-6)}}}}
 function draw(){
  if(!D)return;
  const last=P.length?P[P.length-1]:null;if(last)$('px').textContent=usd(last[1]);
  $('err').textContent=D.error||'';
- $('clock').textContent=`${last?hms(last[0]):''} UTC · 15-min closes ${hm(D.session&&D.session.close_ts||0)} · hour closes ${hm(D.hour_close)}`;
+ $('clock').textContent=`${last?hms(last[0]):''} ET · 15-min closes ${hm(D.session&&D.session.close_ts||0)} · hour closes ${hm(D.hour_close)}`;
  $('zinfo').textContent=`${Math.round(sc.clientWidth/pps()/3600*10)/10} hours on screen`;
  sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);
  const [T0]=range(),tL=T0+sc.scrollLeft/pps(),tR=tL+sc.clientWidth/pps();
@@ -431,6 +458,10 @@ function draw(){
 }
  g.strokeStyle=css('--target');g.lineWidth=2.2;
  for(const s of ses){g.beginPath();g.moveTo(X(s[0]),Y(s[1]));g.lineTo(X(s[0]+900),Y(s[1]));g.stroke()}
+ if(showLv){g.lineWidth=1.2;for(const [t0,lvs] of (H&&H.levels||[])){if(t0+900<tL||t0>tR)continue;
+  for(const [name,side,v] of lvs){if(v<lo||v>hi)continue;g.strokeStyle=css(side==='no'?'--sup':'--res');g.globalAlpha=.75;
+   g.beginPath();g.moveTo(X(t0),Y(v));g.lineTo(X(t0+900),Y(v));g.stroke();g.globalAlpha=1}}
+  g.lineWidth=2.2;g.strokeStyle=css('--target')}
  
  g.strokeStyle=css('--line');g.lineWidth=1.3;g.beginPath();vis.forEach((p,i)=>{const x=X(p[0]),y=Y(p[1]);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
  const at=t=>{let a=0,b=P.length-1;while(a<b){const m=(a+b)>>1;P[m][0]<t?a=m+1:b=m}return P[a]&&Math.abs(P[a][0]-t)<=60?P[a][1]:null};
@@ -506,17 +537,17 @@ function plchart(tL,tR){
  $('pl-legend').innerHTML=leg.join(' &nbsp; ')+' &nbsp; red marker = losing trade';
 }
 function tables(px){
- let rows='<tr><th>Bought (UTC)</th><th>Side</th><th>Band</th><th>Contracts</th><th>Paid</th><th>Model</th><th>Now</th><th>Closes</th></tr>';
+ let rows='<tr><th>Bought (ET)</th><th>Side</th><th>Band</th><th>Contracts</th><th>Paid</th><th>Model</th><th>Now</th><th>Closes</th></tr>';
  const ps=D.range.open.filter(p=>p.lo!=null);
  for(const p of ps){if(px==null)break;const inside=px>=p.lo&&px<=p.hi,win=(p.side==='NO')!==inside;
   const dist=inside?Math.min(px-p.lo,p.hi-px):(px<p.lo?p.lo-px:px-p.hi);
-  rows+=`<tr><td>${p.time_utc.slice(11,16)}</td><td>${p.side}</td><td>${usd(p.lo)}–${usd(p.hi+0.01)}</td><td>${p.contracts}</td><td>${Math.round(p.avg_price*100)}¢</td><td>${(p.model*100).toFixed(1)}¢</td>
+  rows+=`<tr><td>${hm(tsOf(p.time_utc))}</td><td>${p.side}</td><td>${usd(p.lo)}–${usd(p.hi+0.01)}</td><td>${p.contracts}</td><td>${Math.round(p.avg_price*100)}¢</td><td>${(p.model*100).toFixed(1)}¢</td>
   <td><span class="pill ${win?'w':'l'}">${win?'winning':'losing'} ${win?money(p.contracts*(1-p.avg_price)-p.fee):money(-p.cost)}</span> <span class="mut">${usd(dist)} ${inside?'inside':'outside'}</span></td><td>${hm(p.close_ts)}</td></tr>`}
  if(!ps.length)rows+='<tr><td colspan="8" class="mut">None open. The range bot starts checking at 30 minutes left in each hour.</td></tr>';
  $('pos').innerHTML=rows;
- const s=D.session||{};rows='<tr><th>Break (UTC)</th><th>Bot</th><th>Side</th><th>Level</th><th>Ask</th><th>Now</th></tr>';
+ const s=D.session||{};rows='<tr><th>Break (ET)</th><th>Bot</th><th>Side</th><th>Level</th><th>Ask</th><th>Now</th></tr>';
  for(const b of D.buys){const win=(b.side==='YES')===(px>s.strike);
-  rows+=`<tr><td>${b.time_utc.slice(11,19)}</td><td>${b.bot}</td><td>${b.side}</td><td>${b.level} ${b.level_price?usd(b.level_price):''}</td><td>${b.ask?Math.round(b.ask*100)+'¢':''}</td><td><span class="pill ${win?'w':'l'}">${win?'winning':'losing'}</span></td></tr>`}
+  rows+=`<tr><td>${hms(tsOf(b.time_utc))}</td><td>${b.bot}</td><td>${b.side}</td><td>${b.level} ${b.level_price?usd(b.level_price):''}</td><td>${b.ask?Math.round(b.ask*100)+'¢':''}</td><td><span class="pill ${win?'w':'l'}">${win?'winning':'losing'}</span></td></tr>`}
  if(!D.buys.length)rows+=`<tr><td colspan="6" class="mut">No buys this session${s.strike?' (strike '+usd(s.strike)+')':''}. Both bots only buy in the last 1–3 minutes.</td></tr>`;
  $('pos15').innerHTML=rows;
 }
