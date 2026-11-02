@@ -795,11 +795,13 @@ function draw(){
   marker(g,b.bot,x,yy,css(st[b.status]));
   if(short){const col=css(st[b.status]),ty=yy+(up?-28:28);
    const [lx,ly,tw]=label(x+12,ty,`${hm(b.t)} ${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''} ${b.level||''} → ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,col);g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yy);g.lineTo(lx>x?lx:lx+tw,ly);g.stroke();g.setLineDash([])}}
- // live 15-min contract: Kalshi price (K) and model (M), in a small tag just right of the live price, by its target line
+ // live 15-min contract: Kalshi YES price, model and difference, in a small tag just right of the live price, by its target line
  const S=D.session,Q=(D.q15||[]).at(-1);
  if(S&&S.strike&&Q&&last&&S.open_ts<=tR&&S.close_ts>=tL){const yb=Q[1],ya=Q[2],m=Q[3];
-  const l1=`Y K${cents(ya)} M${cents(m)}`,l2=`N K${ya!=null?cents(1-yb):'–'} M${m!=null?cents(1-m):'–'}`;
-  g.font='9px system-ui';const tw=Math.max(g.measureText(l1).width,g.measureText(l2).width)+6,th=22,ys=Y(S.strike);
+  // Y-kp/mp/d: Kalshi YES ask / model YES / model minus Kalshi, all in cents
+  const c1=v=>v==null?'–':String(Math.round(v*1000)/10),dd=ya!=null&&m!=null?Math.round((m-ya)*1000)/10:null;
+  const l1=`Y-${c1(ya)}/${c1(m)}/${dd==null?'–':(dd>0?'+':'')+dd}`;
+  g.font='9px system-ui';const tw=g.measureText(l1).width+6,th=13,ys=Y(S.strike);
   let x=Math.min(X(last[0])+8,w-R-4-tw);x=Math.max(L+4,x);
   const pv=vis.filter(p=>X(p[0])>=x-4&&X(p[0])<=x+tw+4).map(p=>Y(p[1])).concat([Y(last[1])]);
   const clear=y0=>!pv.some(py=>py>=y0-4&&py<=y0+th+4)&&y0>=T&&y0+th<=h-B;
@@ -807,7 +809,7 @@ function draw(){
   g.fillStyle=css('--card')||'#fff';g.fillRect(x,y,tw,th);
   const lft=S.close_ts-last[0],buy=lft>=0&&lft<180;  // green from the start of the 15-min buy rule (3 min left) to the close
   g.strokeStyle=css(buy?'--buyzone':'--target');g.lineWidth=buy?1.5:1;g.strokeRect(x+.5,y+.5,tw-1,th-1);
-  g.fillStyle=css(buy?'--buyzone':'--fg');g.fillText(l1,x+3,y+9.5);g.fillText(l2,x+3,y+19)}
+  g.fillStyle=css(buy?'--buyzone':'--fg');g.fillText(l1,x+3,y+9.5)}
  if(last&&last[0]>=tL&&last[0]<=tR){const la=av.length?av[av.length-1][1]:null;g.fillStyle=css('--fg');g.beginPath();g.arc(X(last[0]),Y(la??last[1]),4,0,7);g.fill()}
  g.restore();
  // gutter: current hour's band labels, outside the plot so the price line never covers them
