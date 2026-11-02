@@ -367,6 +367,26 @@ class Dashboard:
                 return self.prices[u]
         return None
 
+    def model_above(self, now: float, strike, close_ts: int):
+        """Range model's chance the 15-minute contract settles at or above its target."""
+        try:
+            if not strike:
+                return None
+            t = int(now)
+            with self.lock:
+                last = max(self.prices) if self.prices else None
+                price = self._price_at(last) if last else None
+                closes = [self._price_at(t - 1 - 60 * (100 - k)) for k in range(101)]
+            if price is None or None in closes:
+                return None
+            v = self.model.vol(np.array(closes))
+            if not v:
+                return None
+            left = max(1.0, (close_ts - now) / 60)
+            return round(self.model.p_inside(price, float(strike), None, left, *v), 4)
+        except Exception:
+            return None
+
     def range_quotes(self, now: float) -> dict:
         """Kalshi's price and the range model's value for the bands nearest the price, this hour."""
         close = (int(now) // 3600 + 1) * 3600
@@ -431,7 +451,8 @@ class Dashboard:
         if s15:
             try:
                 m = self.k.get(f"/markets/{s15['ticker']}")["market"]
-                row = [int(now), _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars"))]
+                row = [int(now), _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars")),
+                       self.model_above(now, s15.get("strike"), s15["close_ts"])]
                 if self.q15 and self.q15[0][0] < s15["open_ts"]:
                     self.q15 = []
                 self.q15.append(row)
@@ -745,6 +766,18 @@ function draw(){
   marker(g,b.bot,x,yy,css(st[b.status]));
   if(short){const col=css(st[b.status]),ty=yy+(up?-28:28);
    const [lx,ly,tw]=label(x+12,ty,`${hm(b.t)} ${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''} ${b.level||''} → ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,col);g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yy);g.lineTo(lx>x?lx:lx+tw,ly);g.stroke();g.setLineDash([])}}
+ // live 15-min contract: Kalshi price (K) and model (M), in a small tag just right of the live price, by its target line
+ const S=D.session,Q=(D.q15||[]).at(-1);
+ if(S&&S.strike&&Q&&last&&S.open_ts<=tR&&S.close_ts>=tL){const yb=Q[1],ya=Q[2],m=Q[3];
+  const l1=`YES  K ${cents(ya)} · M ${cents(m)}`,l2=`NO   K ${ya!=null?cents(1-yb):'–'} · M ${m!=null?cents(1-m):'–'}`;
+  g.font='600 11px system-ui';const tw=Math.max(g.measureText(l1).width,g.measureText(l2).width)+12,th=32,ys=Y(S.strike);
+  let x=Math.min(X(last[0])+12,w-R-4-tw);x=Math.max(L+4,x);
+  const pv=vis.filter(p=>X(p[0])>=x-4&&X(p[0])<=x+tw+4).map(p=>Y(p[1])).concat([Y(last[1])]);
+  const clear=y0=>!pv.some(py=>py>=y0-4&&py<=y0+th+4)&&y0>=T&&y0+th<=h-B;
+  const cands=[ys-th-5,ys+5,ys-th-25,ys+25,ys-th-50,ys+50];const y=cands.find(clear)??Math.max(T,Math.min(h-B-th,cands[0]));
+  g.fillStyle=css('--card')||'#fff';g.fillRect(x,y,tw,th);
+  g.strokeStyle=css('--target');g.lineWidth=1.5;g.strokeRect(x+.5,y+.5,tw-1,th-1);
+  g.fillStyle=css('--fg');g.fillText(l1,x+6,y+13);g.fillText(l2,x+6,y+27)}
  if(last&&last[0]>=tL&&last[0]<=tR){g.fillStyle=css('--fg');g.beginPath();g.arc(X(last[0]),Y(last[1]),4,0,7);g.fill()}
  g.restore();
  plchart(tL,tR);tables(last?last[1]:null);
