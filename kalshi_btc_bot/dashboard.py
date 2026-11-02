@@ -769,15 +769,15 @@ function draw(){
  // live 15-min contract: Kalshi price (K) and model (M), in a small tag just right of the live price, by its target line
  const S=D.session,Q=(D.q15||[]).at(-1);
  if(S&&S.strike&&Q&&last&&S.open_ts<=tR&&S.close_ts>=tL){const yb=Q[1],ya=Q[2],m=Q[3];
-  const l1=`YES  K ${cents(ya)} · M ${cents(m)}`,l2=`NO   K ${ya!=null?cents(1-yb):'–'} · M ${m!=null?cents(1-m):'–'}`;
-  g.font='600 11px system-ui';const tw=Math.max(g.measureText(l1).width,g.measureText(l2).width)+12,th=32,ys=Y(S.strike);
-  let x=Math.min(X(last[0])+12,w-R-4-tw);x=Math.max(L+4,x);
+  const l1=`Y K${cents(ya)} M${cents(m)}`,l2=`N K${ya!=null?cents(1-yb):'–'} M${m!=null?cents(1-m):'–'}`;
+  g.font='9px system-ui';const tw=Math.max(g.measureText(l1).width,g.measureText(l2).width)+6,th=22,ys=Y(S.strike);
+  let x=Math.min(X(last[0])+8,w-R-4-tw);x=Math.max(L+4,x);
   const pv=vis.filter(p=>X(p[0])>=x-4&&X(p[0])<=x+tw+4).map(p=>Y(p[1])).concat([Y(last[1])]);
   const clear=y0=>!pv.some(py=>py>=y0-4&&py<=y0+th+4)&&y0>=T&&y0+th<=h-B;
-  const cands=[ys-th-5,ys+5,ys-th-25,ys+25,ys-th-50,ys+50];const y=cands.find(clear)??Math.max(T,Math.min(h-B-th,cands[0]));
+  const cands=[ys-th-3,ys+3,ys-th-18,ys+18,ys-th-36,ys+36];const y=cands.find(clear)??Math.max(T,Math.min(h-B-th,cands[0]));
   g.fillStyle=css('--card')||'#fff';g.fillRect(x,y,tw,th);
-  g.strokeStyle=css('--target');g.lineWidth=1.5;g.strokeRect(x+.5,y+.5,tw-1,th-1);
-  g.fillStyle=css('--fg');g.fillText(l1,x+6,y+13);g.fillText(l2,x+6,y+27)}
+  g.strokeStyle=css('--target');g.lineWidth=1;g.strokeRect(x+.5,y+.5,tw-1,th-1);
+  g.fillStyle=css('--fg');g.fillText(l1,x+3,y+9.5);g.fillText(l2,x+3,y+19)}
  if(last&&last[0]>=tL&&last[0]<=tR){g.fillStyle=css('--fg');g.beginPath();g.arc(X(last[0]),Y(last[1]),4,0,7);g.fill()}
  g.restore();
  plchart(tL,tR);tables(last?last[1]:null);
