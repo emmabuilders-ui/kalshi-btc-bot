@@ -259,9 +259,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#8a939c;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#d4a106;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#8a939c;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#f2c94c;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
@@ -294,8 +294,8 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 <span class="mut" id="zinfo"></span></div>
 <div class="card">
 <div class="key"><span><i style="background:var(--no);opacity:.35"></i>range NO band</span><span><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
-<span>band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
-<span><i style="background:var(--strike)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>▲▼ 15-min bot buys</span><span>thin vertical lines = 15-min contract closes</span></div>
+<span>band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span>dots and triangles: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
+<span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>▲▼ 15-min bot buys</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin (BRTI) and every trade</div><canvas id="c"></canvas>
 <div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas>
@@ -380,15 +380,15 @@ function draw(){
   g.strokeStyle=css(st[r.status]);g.lineWidth=1.5;g.strokeRect(x0,Y(r.hi),x1-x0,Y(r.lo)-Y(r.hi));
   if(x1-x0>220){g.fillStyle=css(st[r.status]);g.font='600 10.5px system-ui';
    g.fillText(`${r.side} ${usd(r.lo)}–${usd(r.hi+0.01)} x${r.n} @${Math.round(r.price*100)}¢ (model ${r.model?(r.model*100).toFixed(1):'?'}¢) ${r.status==='open'?'OPEN':r.status.toUpperCase()+' '+money(r.pnl)}`,Math.max(x0,L)+4,Y(r.hi)+12)}}
- g.strokeStyle=css('--strike');g.lineWidth=2.2;
+ g.strokeStyle=css('--target');g.lineWidth=2.2;
  for(const s of ses){g.beginPath();g.moveTo(X(s[0]),Y(s[1]));g.lineTo(X(s[0]+900),Y(s[1]));g.stroke()}
  
- if(ZOOMS[zi]>=64){g.fillStyle=css('--strike');g.font='600 10.5px system-ui';for(const s of ses)g.fillText((ZOOMS[zi]>=128?'target ':'')+usd(s[1]),X(s[0])+3,Y(s[1])-4)}
+ if(ZOOMS[zi]>=64){g.fillStyle=css('--target');g.font='600 10.5px system-ui';for(const s of ses)g.fillText((ZOOMS[zi]>=128?'target ':'')+usd(s[1]),X(s[0])+3,Y(s[1])-4)}
  g.strokeStyle=css('--line');g.lineWidth=1.3;g.beginPath();vis.forEach((p,i)=>{const x=X(p[0]),y=Y(p[1]);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
  const at=t=>{let a=0,b=P.length-1;while(a<b){const m=(a+b)>>1;P[m][0]<t?a=m+1:b=m}return P[a]?P[a][1]:null};
- for(const r of rng){const y=at(r.t);if(y==null)continue;g.fillStyle=css(r.side==='NO'?'--no':'--yes');g.beginPath();g.arc(X(r.t),Y(y),4,0,7);g.fill()}
+ for(const r of rng){const y=at(r.t);if(y==null)continue;g.fillStyle=css(st[r.status]);g.strokeStyle=css('--card');g.lineWidth=1.5;g.beginPath();g.arc(X(r.t),Y(y),5,0,7);g.fill();g.stroke()}
  for(const b of (H?H.buys:[]).filter(b=>b.t>=tL&&b.t<=tR)){const y=at(b.t);if(y==null)continue;const x=X(b.t),yy=Y(y),up=b.side==='YES';
-  g.fillStyle=css(b.bot==='Fast push'?'--fp':'--strike');g.beginPath();g.moveTo(x,yy+(up?-9:9));g.lineTo(x-6,yy+(up?2:-2));g.lineTo(x+6,yy+(up?2:-2));g.fill();
+  g.fillStyle=css(st[b.status]);g.beginPath();g.moveTo(x,yy+(up?-9:9));g.lineTo(x-6,yy+(up?2:-2));g.lineTo(x+6,yy+(up?2:-2));g.fill();
   g.fillStyle=css(st[b.status]);g.font='600 10.5px system-ui';g.fillText(`${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''} ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,x+8,yy+(up?-10:16))}
  if(last&&last[0]>=tL&&last[0]<=tR){g.fillStyle=css('--fg');g.beginPath();g.arc(X(last[0]),Y(last[1]),4,0,7);g.fill()}
  g.restore();
