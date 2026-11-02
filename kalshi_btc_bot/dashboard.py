@@ -22,7 +22,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .late_breakdown import KalshiClient
+from .fast_push import all_levels
+from .late_breakdown import WARMUP, KalshiClient
 from .range_paper import N_BANDS, RangeModel, _f, band_mid, event_ticker, qualifies
 
 log = logging.getLogger("kalshi_btc_bot")
@@ -176,6 +177,102 @@ def current_levels(L: dict[str, Path], s: dict) -> list:
     return []
 
 
+def hour_seconds(path: Path, h0: int) -> np.ndarray:
+    """One hour of the breakdown bot's price log as 3600 one-second values (nan where missing)."""
+    a = np.full(3600, np.nan)
+    try:
+        with gzip.open(path, "rt") as f:
+            for line in f:
+                x = line.split(",")
+                if x[0].isdigit() and x[1]:
+                    i = int(x[0]) - h0
+                    if 0 <= i < 3600:
+                        a[i] = float(x[1])
+    except (OSError, EOFError, ValueError):
+        pass
+    return a
+
+
+class LevelTracker:
+    """Support and resistance recalculated every minute from the price history (the same 13 kinds of
+    level the fast-push bot uses, measured from the price at that minute). Results are cached on disk."""
+
+    def __init__(self, prices_dir: Path, cache: Path):
+        self.dir, self.cache = prices_dir, cache
+        self.rows: dict[int, dict] = {}
+        try:
+            self.rows = {int(k): v for k, v in json.loads(cache.read_text()).items()}
+        except (OSError, ValueError):
+            pass
+        self.secs: dict[int, np.ndarray] = {}     # hour start -> 3600 one-second prices
+        self.live: dict[int, float] = {}
+
+    def _load_hours(self, upto: int):
+        cur = upto // 3600 * 3600
+        for f in sorted(self.dir.glob("*/*.csv.gz")):
+            try:
+                h0 = int(datetime.strptime(f"{f.parent.name} {f.name[:2]}", "%Y-%m-%d %H").replace(tzinfo=timezone.utc).timestamp())
+            except ValueError:
+                continue
+            if h0 < upto - WARMUP - 7200:
+                continue
+            if h0 not in self.secs or h0 >= cur - 3600:
+                self.secs[h0] = hour_seconds(f, h0)
+        for h0 in [h for h in self.secs if h < upto - WARMUP - 7200]:
+            del self.secs[h0]
+
+    def series(self, start: int, end: int) -> np.ndarray:
+        """One-second prices for [start, end), gaps filled forward."""
+        b = np.full(end - start, np.nan)
+        for h0, a in self.secs.items():
+            lo, hi = max(start, h0), min(end, h0 + 3600)
+            if lo < hi:
+                b[lo - start:hi - start] = a[lo - h0:hi - h0]
+        for t, v in self.live.items():
+            if start <= t < end and np.isnan(b[t - start]):
+                b[t - start] = v
+        ok = ~np.isnan(b)
+        if not ok.any():
+            return b[:0]
+        first = int(np.argmax(ok))
+        b = b[first:]
+        idx = np.where(~np.isnan(b), np.arange(len(b)), 0)
+        np.maximum.accumulate(idx, out=idx)
+        return b[idx]
+
+    def update(self, now: float, live: dict[int, float], budget: float = 20.0):
+        """Fill in any missing minutes up to now (oldest first, at most `budget` seconds of work)."""
+        self.live = live
+        self._load_hours(int(now))
+        if not self.secs:
+            return
+        first = min(self.secs)
+        t_end = int(now) // 60 * 60
+        todo = [t for t in range(max(first + 900, t_end - 30 * 86400) // 60 * 60, t_end + 1, 60) if t not in self.rows]
+        t0, done = time.time(), 0
+        for t in todo:
+            b = self.series(t - WARMUP, t)
+            if len(b) < 900:
+                continue
+            try:
+                lv = all_levels(b, t)
+            except Exception:
+                continue
+            self.rows[t] = {k: [sd, round(p, 2)] for k, (sd, p) in lv.items()}
+            done += 1
+            if time.time() - t0 > budget:
+                break
+        if done:
+            try:
+                keep = {k: v for k, v in self.rows.items() if k >= t_end - 30 * 86400}
+                self.cache.write_text(json.dumps(keep))
+            except OSError:
+                pass
+
+    def since(self, t: int) -> list:
+        return [[k, self.rows[k]] for k in sorted(self.rows) if k > t]
+
+
 class Dashboard:
     def __init__(self, logs: dict[str, Path], key_id=None, key_path=None):
         self.k = KalshiClient(key_id, key_path)
@@ -189,6 +286,7 @@ class Dashboard:
         self._ladder_at: dict[int, float] = {}
         self.first_ts: int | None = None
         self.model = RangeModel()
+        self.levels = LevelTracker(logs["breakdown"] / "prices", Path.home() / ".kalshi-dash-levels.json")
         self.quotes: dict = {}
         self.strikes: dict[int, float] = {}   # 15-minute session open -> Kalshi target (strike)
         self._strikes_at = 0.0
@@ -352,6 +450,16 @@ class Dashboard:
             except Exception as e:
                 self.err = f"market list: {e}"
 
+    def level_loop(self):
+        while True:
+            try:
+                with self.lock:
+                    live = dict(self.prices)
+                self.levels.update(time.time(), live)
+            except Exception as e:
+                log.warning("levels: %s", e)
+            time.sleep(15)
+
     def loop(self, every: float = 2.0):
         while True:
             t0 = time.time()
@@ -372,7 +480,7 @@ class Dashboard:
             "now": time.time(), "prices": pts, "error": self.err, "hour_close": hour_close,
             "range": {"open": range_positions(L["range"]),
                       "settled": settled_summary(_rows(L["range"] / "trades.csv"))},
-            "session": s, "quotes": self.quotes, "q15": self.q15, "levels_now": current_levels(L, s),
+            "session": s, "quotes": self.quotes, "q15": self.q15,
             "buys": session_buys(bd, s.get("ticker"), "Breakdown") + session_buys(fp, s.get("ticker"), "Fast push"),
             "pnl": sorted(pnl_points(_rows(L["range"] / "trades.csv"), "Range")
                           + pnl_points(_rows(L["breakdown"] / "trades.csv"), "Breakdown")
@@ -404,6 +512,14 @@ def make_handler(dash: Dashboard, token: str):
                 self._send(200, page, "text/html; charset=utf-8")
             elif self.path == root + "history.json":
                 self._send(200, json.dumps(dash.history()).encode(), "application/json")
+            elif self.path.startswith(root + "levels.json"):
+                since = 0
+                if "?since=" in self.path:
+                    try:
+                        since = int(self.path.split("?since=")[1])
+                    except ValueError:
+                        since = 0
+                self._send(200, json.dumps(dash.levels.since(since)).encode(), "application/json")
             elif self.path == root + "data.json":
                 self._send(200, json.dumps(dash.data()).encode(), "application/json")
             elif self.path == root[:-1]:
@@ -421,6 +537,7 @@ def serve(port: int, token: str, logs: dict[str, Path]):
     dash.warm_up(time.time())
     dash.poll()
     threading.Thread(target=dash.loop, daemon=True).start()
+    threading.Thread(target=dash.level_loop, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", port), make_handler(dash, token))
     log.info("live chart on port %d", port)
     srv.serve_forever()
@@ -467,7 +584,7 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 <div class="card">
 <div class="key"><span><i style="background:var(--no);opacity:.35"></i>range NO band</span><span><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
 <span>band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span>markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
-<span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>support</span><span><i style="background:var(--res)"></i>resistance (levels the 15-min bots watch)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
+<span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>support</span><span><i style="background:var(--res)"></i>resistance (the levels the 15-min bots watch, recalculated every minute)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin (BRTI) and every trade</div><canvas id="c"></canvas>
 <div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas>
@@ -512,6 +629,9 @@ function sum(id,s){$(id).textContent=s.trades?`${s.wins}/${s.trades} won, ${mone
 function merge(pts){if(!pts.length)return;const last=P.length?P[P.length-1][0]:0;for(const p of pts)if(p[0]>last)P.push(p)}
 async function loadHistory(){try{const r=await fetch('history.json',{cache:'no-store'});H=await r.json();
  const live=P.filter(p=>p[0]>(H.prices.length?H.prices[H.prices.length-1][0]:0));P=H.prices.concat(live);layout()}catch(e){}}
+let LVR=[];
+async function loadLevels(){try{const since=LVR.length?LVR[LVR.length-1][0]:0;const r=await fetch('levels.json?since='+since,{cache:'no-store'});
+ const add=await r.json();if(add.length){LVR=LVR.concat(add);draw()}}catch(e){}}
 async function tick(){try{const r=await fetch('data.json',{cache:'no-store'});D=await r.json();merge(D.prices);
  if(!H)await loadHistory();layout()}catch(e){$('err').textContent='connection lost, retrying'}}
 function layout(){
@@ -575,11 +695,16 @@ function draw(){
 }
  g.strokeStyle=css('--target');g.lineWidth=2.2;
  for(const s of ses){g.beginPath();g.moveTo(X(s[0]),Y(s[1]));g.lineTo(X(s[0]+900),Y(s[1]));g.stroke()}
- if(showLv){g.lineWidth=1.2;const LV=(H&&H.levels||[]).filter(x=>!(D.levels_now&&D.levels_now[0]===x[0])).concat(D.levels_now&&D.levels_now.length?[D.levels_now]:[]);
-  for(const [t0,lvs] of LV){if(t0+900<tL||t0>tR)continue;
-  for(const [name,side,v] of lvs){if(v<lo||v>hi)continue;g.strokeStyle=css(side==='no'?'--sup':'--res');g.globalAlpha=.75;
-   g.beginPath();g.moveTo(X(t0),Y(v));g.lineTo(X(t0+900),Y(v));g.stroke();g.globalAlpha=1}}
-  g.lineWidth=2.2;g.strokeStyle=css('--target')}
+ if(showLv&&LVR.length){g.lineWidth=1.3;g.globalAlpha=.8;
+  // each level kind is a step line: one value per minute, joined while it stays the same
+  let a=0,b=LVR.length;while(a<b){const m=(a+b)>>1;LVR[m][0]<tL-60?a=m+1:b=m}
+  const open={};
+  const flush=(k,e)=>{const o=open[k];if(!o)return;g.strokeStyle=css(o.side==='no'?'--sup':'--res');g.beginPath();g.moveTo(X(o.t0),Y(o.v));g.lineTo(X(e),Y(o.v));g.stroke();delete open[k]};
+  for(let i=a;i<LVR.length&&LVR[i][0]<=tR;i++){const [t,lv]=LVR[i];
+   for(const k in open){const n=lv[k];if(!n||n[1]!==open[k].v||n[0]!==open[k].side)flush(k,t)}
+   for(const k in lv){const [sd,v]=lv[k];if(v<lo||v>hi){if(open[k])flush(k,t);continue}if(!open[k])open[k]={t0:t,v,side:sd}}}
+  const tend=Math.min(tR,(LVR[LVR.length-1][0])+60);for(const k in open)flush(k,tend);
+  g.globalAlpha=1;g.lineWidth=2.2;g.strokeStyle=css('--target')}
  
  g.strokeStyle=css('--line');g.lineWidth=1.3;g.beginPath();vis.forEach((p,i)=>{const x=X(p[0]),y=Y(p[1]);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
  const at=t=>{let a=0,b=P.length-1;while(a<b){const m=(a+b)>>1;P[m][0]<t?a=m+1:b=m}return P[a]&&Math.abs(P[a][0]-t)<=60?P[a][1]:null};
@@ -694,6 +819,6 @@ function tables(px){quotes(px);q15();
  if(!D.buys.length)rows+=`<tr><td colspan="6" class="mut">No buys this session${s.strike?' (strike '+usd(s.strike)+')':''}. Both bots only buy in the last 1–3 minutes.</td></tr>`;
  $('pos15').innerHTML=rows;
 }
-tick();setInterval(tick,2000);setInterval(loadHistory,60000);
+tick();setInterval(tick,2000);setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
 </script></body></html>
 """
