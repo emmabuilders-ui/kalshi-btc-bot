@@ -259,9 +259,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#d4a106;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--fp:#8e44ad;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#f2c94c;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--fp:#c08be0;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
