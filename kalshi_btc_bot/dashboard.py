@@ -127,11 +127,13 @@ def history_events(L: dict[str, Path]) -> dict:
         t = _ts(r["time_utc"])
         rng.append({"t": t, "close": (t // 3600 + 1) * 3600, "side": r["side"], "lo": lo, "hi": hi,
                     "n": r.get("contracts"), "price": _num(r.get("avg_price")), "model": _num(r.get("model")),
-                    "status": "won" if str(r.get("won")) == "1" else "lost", "pnl": _num(r.get("pnl"))})
+                    "status": "won" if str(r.get("won")) == "1" else "lost", "pnl": _num(r.get("pnl")),
+                    "cost": _num(r.get("cost"))})
     for p in range_positions(L["range"]):
         t = _ts(p["time_utc"])
         rng.append({"t": t, "close": p["close_ts"], "side": p["side"], "lo": p["lo"], "hi": p["hi"],
-                    "n": p["contracts"], "price": p["avg_price"], "model": p.get("model"), "status": "open", "pnl": None})
+                    "n": p["contracts"], "price": p["avg_price"], "model": p.get("model"), "status": "open", "pnl": None,
+                    "cost": p.get("cost")})
     sessions = []
     for r in _rows(L["breakdown"] / "sessions.csv"):
         k = _num(r.get("strike"))
@@ -168,6 +170,7 @@ def history_events(L: dict[str, Path]) -> dict:
                          "level": r.get("level"), "ask": _num(r.get("ask")), "status": st,
                          "n": (tr or {}).get("contracts") or r.get("contracts"),
                          "price": _num(tr.get("avg_price")) if tr else None,
+                         "cost": _num(tr.get("cost")) if tr else None,
                          "pnl": _num(tr.get("pnl")) if tr else None})
     return {"range": rng, "sessions": sessions, "levels": levels, "buys": buys}
 
@@ -870,24 +873,25 @@ let TSIG='';
 function trades(){if(!H)return;const sig=JSON.stringify([H.range,H.buys]);if(sig===TSIG)return;TSIG=sig;
  const R=[];
  for(const r of H.range||[])R.push({t:r.t,bot:'Range',mkt:`hour to ${hm(r.close)} · ${r.lo==null?'':usd(r.lo)}–${r.hi==null?'':usd(r.hi+0.01)}`,
-  side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl});
+  side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl,cost:r.cost});
  for(const b of H.buys||[])R.push({t:b.t,bot:b.bot,mkt:`15 min to ${hm(Math.floor(b.t/900)*900+900)} · ${b.level||''}`,
-  side:b.side,n:b.n,price:b.price!=null?b.price:b.ask,model:null,status:b.status,pnl:b.pnl});
+  side:b.side,n:b.n,price:b.price!=null?b.price:b.ask,model:null,status:b.status,pnl:b.pnl,cost:b.cost});
  R.sort((a,b)=>a.t-b.t);
- let cum=0;const W={};for(const k of ['Range','Breakdown','Fast push'])W[k]={w:0,l:0,o:0,p:0};
- for(const r of R){const w=W[r.bot]||(W[r.bot]={w:0,l:0,o:0,p:0});
-  if(r.status==='open'){w.o++;r.cum=null;continue}
-  r.status==='won'?w.w++:w.l++;w.p+=r.pnl||0;cum+=r.pnl||0;r.cum=cum}
+ let cum=0,spent=0,nset=0;const W={};for(const k of ['Range','Breakdown','Fast push'])W[k]={w:0,l:0,o:0,p:0,s:0};
+ for(const r of R){const w=W[r.bot]||(W[r.bot]={w:0,l:0,o:0,p:0,s:0});
+  if(r.cost!=null){spent+=r.cost;w.s+=r.cost}r.spent=r.cost!=null?spent:null;
+  if(r.status==='open'){w.o++;r.cum=null;continue}nset++;
+  r.status==='won'?w.w++:w.l++;w.p+=r.pnl||0;cum+=r.pnl||0;r.cum=cum;r.avg=cum/nset}
  const mk=r=>r.bot==='Range'?'●':r.bot==='Breakdown'?'▲':'■';
  $('wl').innerHTML=Object.entries(W).map(([k,v])=>{const n=v.w+v.l;
-  return `<span><b>${k}</b>: <span style="color:var(--win)">${v.w} won</span> / <span style="color:var(--lose)">${v.l} lost</span>${n?' ('+Math.round(v.w/n*100)+'% win)':''}${v.o?' · '+v.o+' open':''} · ${money(v.p)}</span>`}).join('');
- $('tinfo').textContent=`${R.length} trades · total ${money(cum)} settled · newest first`;
- let rows='<tr><th>Time (ET)</th><th>Bot</th><th>Market</th><th>Side</th><th>Contracts</th><th>Price</th><th>Model</th><th>Win/Loss</th><th>P/L</th><th>Cumulative P/L</th></tr>';
+  return `<span><b>${k}</b>: <span style="color:var(--win)">${v.w} won</span> / <span style="color:var(--lose)">${v.l} lost</span>${n?' ('+Math.round(v.w/n*100)+'% win)':''}${v.o?' · '+v.o+' open':''} · ${money(v.p)}${n?' · avg '+money(v.p/n)+'/trade':''} · spent $${v.s.toFixed(2)}</span>`}).join('');
+ $('tinfo').textContent=`${R.length} trades · total ${money(cum)} settled · avg ${nset?money(cum/nset):'–'} per trade · $${spent.toFixed(2)} spent · newest first`;
+ let rows='<tr><th>Time (ET)</th><th>Bot</th><th>Market</th><th>Side</th><th>Contracts</th><th>Price</th><th>Model</th><th>Win/Loss</th><th>Spent</th><th>Cumulative spent</th><th>P/L</th><th>Cumulative P/L</th><th>Avg P/L/trade</th></tr>';
  for(let i=R.length-1;i>=0;i--){const r=R[i];const d=new Date(r.t*1000).toLocaleDateString('en-US',{timeZone:'America/New_York',month:'numeric',day:'numeric'});
   const res=r.status==='open'?'<span class="pill" style="color:var(--open)">open</span>':`<span class="pill ${r.status==='won'?'w':'l'}">${r.status==='won'?'Won':'Lost'}</span>`;
   const pc=v=>v==null?'<span class="mut">–</span>':`<span style="color:var(${v>=0?'--win':'--lose'})">${money(v)}</span>`;
-  rows+=`<tr><td>${d} ${hm(r.t)}</td><td>${mk(r)} ${r.bot}</td><td>${r.mkt}</td><td>${r.side||''}</td><td>${r.n||''}</td><td>${r.price!=null?cents(r.price):'–'}</td><td>${r.model!=null?cents(r.model):'<span class="mut">–</span>'}</td><td>${res}</td><td>${pc(r.pnl)}</td><td>${pc(r.cum)}</td></tr>`}
- if(!R.length)rows+='<tr><td colspan="10" class="mut">No trades yet.</td></tr>';
+  rows+=`<tr><td>${d} ${hm(r.t)}</td><td>${mk(r)} ${r.bot}</td><td>${r.mkt}</td><td>${r.side||''}</td><td>${r.n||''}</td><td>${r.price!=null?cents(r.price):'–'}</td><td>${r.model!=null?cents(r.model):'<span class="mut">–</span>'}</td><td>${res}</td><td>${r.cost!=null?'$'+r.cost.toFixed(2):'–'}</td><td>${r.spent!=null?'$'+r.spent.toFixed(2):'–'}</td><td>${pc(r.pnl)}</td><td>${pc(r.cum)}</td><td>${pc(r.avg)}</td></tr>`}
+ if(!R.length)rows+='<tr><td colspan="13" class="mut">No trades yet.</td></tr>';
  $('trades').innerHTML=rows}
 function tables(px){q15();trades();
  let rows='<tr><th>Bought (ET)</th><th>Side</th><th>Band</th><th>Contracts</th><th>Paid</th><th>Model</th><th>Now</th><th>Closes</th></tr>';
