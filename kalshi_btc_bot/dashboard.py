@@ -294,8 +294,8 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 <span class="mut" id="zinfo"></span></div>
 <div class="card">
 <div class="key"><span><i style="background:var(--no);opacity:.35"></i>range NO band</span><span><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
-<span>band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span>dots and triangles: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
-<span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>▲▼ 15-min bot buys</span><span>thin vertical lines = 15-min contract closes</span></div>
+<span>band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span>markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
+<span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin (BRTI) and every trade</div><canvas id="c"></canvas>
 <div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas>
@@ -416,15 +416,19 @@ function draw(){
   if(!full)texts.splice(0,2);
   if(short){const [lx,ly,tw]=boxLabel(x,texts,col,X(r.close-3600),X(r.close),Y(r.hi),Y(r.lo));const ex=lx>x?lx:(lx+tw<x?lx+tw:x);
    g.strokeStyle=col;g.lineWidth=1.2;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yd);g.lineTo(x,ly);g.lineTo(ex,ly);g.stroke()}
-  g.setLineDash([]);g.fillStyle=col;g.strokeStyle=css('--card');g.lineWidth=1.5;g.beginPath();g.arc(x,yd,5,0,7);g.fill();g.stroke()}
+  g.setLineDash([]);marker(g,'Range',x,yd,col)}
  for(const b of (H?H.buys:[]).filter(b=>b.t>=tL&&b.t<=tR)){const y=at(b.t);if(y==null)continue;const x=X(b.t),yy=Y(y),up=b.side==='YES',short=short0&&x>=L&&x<=w-R;
-  g.fillStyle=css(st[b.status]);g.beginPath();g.moveTo(x,yy+(up?-9:9));g.lineTo(x-6,yy+(up?2:-2));g.lineTo(x+6,yy+(up?2:-2));g.fill();
+  marker(g,b.bot,x,yy,css(st[b.status]));
   if(short){const col=css(st[b.status]),ty=yy+(up?-28:28);
    const [lx,ly,tw]=label(x+12,ty,`${hm(b.t)} ${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''} ${b.level||''} → ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,col);g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yy);g.lineTo(lx>x?lx:lx+tw,ly);g.stroke();g.setLineDash([])}}
  if(last&&last[0]>=tL&&last[0]<=tR){g.fillStyle=css('--fg');g.beginPath();g.arc(X(last[0]),Y(last[1]),4,0,7);g.fill()}
  g.restore();
  plchart(tL,tR);tables(last?last[1]:null);
 }
+// one shape per bot: Range circle, Breakdown triangle, Fast push square
+function marker(g,bot,x,y,col){g.fillStyle=col;g.strokeStyle=css('--card');g.lineWidth=1.5;g.beginPath();
+ if(bot==='Breakdown'){g.moveTo(x,y-7);g.lineTo(x-6.5,y+5);g.lineTo(x+6.5,y+5);g.closePath()}
+ else if(bot==='Fast push'){g.rect(x-5,y-5,10,10)}else g.arc(x,y,5,0,7);g.fill();g.stroke()}
 const BOTS=[['Total','--line'],['Range','--yes'],['Breakdown','--no'],['Fast push','--fp']];
 function plchart(tL,tR){
  const [g,w]=setup($('pl'),240),h=240,L=66,R=8,T=8,B=22;
@@ -447,9 +451,9 @@ function plchart(tL,tR){
  for(const [b,col] of BOTS){const s=series[b];g.strokeStyle=css(col);g.lineWidth=b==='Total'?2.5:1.8;g.setLineDash(b==='Total'?[7,5]:[]);g.beginPath();
   s.forEach((p,i)=>{if(!i){g.moveTo(X(p[0]),Y(p[1]));return}g.lineTo(X(p[0]),Y(s[i-1][1]));g.lineTo(X(p[0]),Y(p[1]))});g.stroke();g.setLineDash([]);
   leg.push(`<span style="color:var(${col})">■</span> ${b==='Total'?'Cumulative, all bots (dashed)':b} ${money(s[s.length-1][1])}`)}
- for(const p of pts){if(p.won)continue;g.fillStyle=css('--lose');g.beginPath();g.arc(X(p.t),Y(valAt(series.Total,p.t)),4,0,7);g.fill()}
+ for(const p of pts){if(p.won)continue;marker(g,p.bot,X(p.t),Y(valAt(series.Total,p.t)),css('--lose'))}
  g.restore();
- $('pl-legend').innerHTML=leg.join(' &nbsp; ')+' &nbsp; red dot = losing trade';
+ $('pl-legend').innerHTML=leg.join(' &nbsp; ')+' &nbsp; red marker = losing trade';
 }
 function tables(px){
  let rows='<tr><th>Bought (UTC)</th><th>Side</th><th>Band</th><th>Contracts</th><th>Paid</th><th>Model</th><th>Now</th><th>Closes</th></tr>';
