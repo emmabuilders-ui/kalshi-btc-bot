@@ -840,14 +840,6 @@ function plchart(tL,tR){
  const step=[0.5,1,2,5,10,20,50,100,200,500,1000].find(s=>(hi-lo)/s<=6)||2000;
  for(let v=Math.ceil(lo/step)*step;v<=hi;v+=step){g.strokeStyle=css('--grid');g.beginPath();g.moveTo(L,Y(v));g.lineTo(w-R,Y(v));g.stroke();g.fillStyle=css('--mut');g.fillText(money(v).replace('+',''),4,Y(v)+4)}
  g.save();g.beginPath();g.rect(L,0,w-L-R,h);g.clip();
- // faint BTC price overlay behind the P/L lines (its own scale: lowest to highest price on screen)
- const bp=P.filter(p=>p[0]>=tL-60&&p[0]<=tR+60);
- if(bp.length>1){let pl=Infinity,ph=-Infinity;for(const p of bp){if(p[1]<pl)pl=p[1];if(p[1]>ph)ph=p[1]}
-  const pr=Math.max(ph-pl,1),YB=v=>T+6+(ph-v)/pr*(h-T-B-12);
-  g.strokeStyle=css('--fg');g.globalAlpha=.16;g.lineWidth=1.2;g.beginPath();
-  const stp=Math.max(1,Math.floor(bp.length/(w*2)));bp.forEach((p,i)=>{if(i%stp)return;i?g.lineTo(X(p[0]),YB(p[1])):g.moveTo(X(p[0]),YB(p[1]))});g.stroke();
-  g.globalAlpha=.55;g.fillStyle=css('--mut');g.font='10px system-ui';
-  const hiT=`BTC ${usd(ph)}`,loT=`BTC ${usd(pl)}`;g.fillText(hiT,w-R-g.measureText(hiT).width-4,T+10);g.fillText(loT,w-R-g.measureText(loT).width-4,h-B-4);g.globalAlpha=1}
  g.strokeStyle=css('--mut');g.beginPath();g.moveTo(L,Y(0));g.lineTo(w-R,Y(0));g.stroke();
  const leg=[];
  for(const [b,col] of BOTS){const s=series[b];g.strokeStyle=css(col);g.lineWidth=b==='Total'?2.5:1.8;g.setLineDash(b==='Total'?[7,5]:[]);g.beginPath();
@@ -855,7 +847,7 @@ function plchart(tL,tR){
   leg.push(`<span style="color:var(${col})">■</span> ${b==='Total'?'Cumulative, all bots (dashed)':b} ${money(s[s.length-1][1])}`)}
  for(const p of pts){if(p.won)continue;marker(g,p.bot,X(p.t),Y(valAt(series.Total,p.t)),css('--lose'))}
  g.restore();
- $('pl-legend').innerHTML=leg.join(' &nbsp; ')+' &nbsp; red marker = losing trade &nbsp; faint grey line = BTC price (top and bottom of the chart = highest and lowest price on screen)';
+ $('pl-legend').innerHTML=leg.join(' &nbsp; ')+' &nbsp; red marker = losing trade';
 }
 function bandQ(c,a,b){const Q=D&&D.quotes;if(!Q||Q.close!==c)return null;
  return (Q.bands||[]).find(r=>r.lo!=null&&r.hi!=null&&Math.abs(r.lo-a)<1&&Math.abs(r.hi+0.01-b)<1)||null}
