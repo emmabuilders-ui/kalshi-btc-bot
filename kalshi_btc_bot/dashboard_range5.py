@@ -65,7 +65,7 @@ th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--card)
 <div class="card" style="padding:8px"><h2 style="margin:4px 4px 6px">Bitcoin and this bot's trades</h2>
 <iframe src="../?v=range5" title="Bitcoin chart" style="width:100%;height:790px;border:0;display:block"></iframe></div>
 <div class="card"><h2>Profit by account (settled trades)</h2><div class="legend" id="leg"></div>
-<canvas id="pl" height="256"></canvas></div>
+<canvas id="pl" height="160"></canvas></div>
 <div class="card"><h2>Accounts</h2><div class="scroll"><table id="acc"></table></div></div>
 <div class="card"><h2>Open positions</h2><div class="scroll"><table id="opn"></table></div></div>
 <div class="card"><h2>All trades</h2><div class="scroll"><table id="trd"></table></div></div>
