@@ -229,7 +229,7 @@ Wants=network-online.target
 [Service]
 User=$USER_
 EnvironmentFile=$CONF/env
-ExecStart=$APP/.venv/bin/python -m kalshi_btc_bot dashboard --port 8080 --token-file $CONF/dash_token --breakdown $LOGS/breakdown --range $RANGE_LOGS/range --fastpush $FP_LOGS/fastpush
+ExecStart=$APP/.venv/bin/python -m kalshi_btc_bot dashboard --port 8080 --token-file $CONF/dash_token --breakdown $LOGS/breakdown --range $RANGE_LOGS/range --fastpush $FP_LOGS/fastpush --range5 $R5_LOGS/range5
 Restart=always
 RestartSec=30
 
@@ -254,7 +254,9 @@ case "${1:-status}" in
             "https://raw.githubusercontent.com/emmabuilders-ui/kalshi-btc-bot/${BRANCH:-main}/deploy/setup.sh" | bash ;;
   stop)   systemctl stop kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-dash ;;
   start)  systemctl start kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-dash ;;
-  chart)  echo "Live chart: http://$(curl -fsS -4 https://api.ipify.org 2>/dev/null || hostname -I | cut -d' ' -f1):8080/$(cat /etc/kalshi-bot/dash_token)/" ;;
+  chart)  IP=$(curl -fsS -4 https://api.ipify.org 2>/dev/null || hostname -I | cut -d' ' -f1); TOK=$(cat /etc/kalshi-bot/dash_token)
+          echo "Live chart: http://$IP:8080/$TOK/"
+          echo "5-account range bot chart: http://$IP:8080/$TOK/range5/" ;;
   touch)  shift; /opt/kalshi-btc-bot/.venv/bin/python -m kalshi_btc_bot touch "$@" ;;
   *) echo "usage: kbot status|log|update|stop|start|chart|touch COIN TF BARS [TARGET]" ;;
 esac
