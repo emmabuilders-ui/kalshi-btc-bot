@@ -61,14 +61,12 @@ th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--card)
 <span class="mut">Paper only, no real orders · times ET · updates every 10 s</span></div>
 <div class="top"><span>Total profit <span class="big" id="tot">–</span></span>
 <span id="sub" class="mut"></span><span id="err" class="lost"></span></div>
+<div class="card" style="padding:8px"><h2 style="margin:4px 4px 6px">Bitcoin and this bot's trades</h2>
+<iframe src="../?v=range5" title="Bitcoin chart" style="width:100%;height:660px;border:0;display:block"></iframe></div>
 <div class="card"><h2>Profit by account (settled trades)</h2><div class="legend" id="leg"></div>
 <canvas id="pl" height="320"></canvas></div>
 <div class="card"><h2>Accounts</h2><div class="scroll"><table id="acc"></table></div></div>
-<div class="grid2">
-<div class="card"><h2>BRTI, last hour, with this bot's open bands</h2><canvas id="px" height="300"></canvas>
-<div class="mut" id="pxnote"></div></div>
 <div class="card"><h2>Open positions</h2><div class="scroll"><table id="opn"></table></div></div>
-</div>
 <div class="card"><h2>All trades</h2><div class="scroll"><table id="trd"></table></div></div>
 </div><div id="tip"></div>
 <script>
@@ -112,6 +110,7 @@ document.getElementById('pl').addEventListener('mousemove',e=>{if(!plGeom)return
   tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+10)+'px'});
 document.getElementById('pl').addEventListener('mouseleave',()=>tip.style.display='none');
 function drawPX(){
+  if(!document.getElementById('px'))return;  // the full chart now sits at the top of the page
   const c=document.getElementById('px'),[x,W,H]=setup(c);const L=64,R=10,T=10,B=24;const P=D.prices||[];
   if(!P.length){x.fillStyle=css('--mut');x.fillText('waiting for BRTI…',L,40);return}
   const t0=P[0][0],t1=Math.max(P[P.length-1][0],t0+60);let lo=Infinity,hi=-Infinity;P.forEach(p=>{lo=Math.min(lo,p[1]);hi=Math.max(hi,p[1])});

@@ -525,6 +525,26 @@ class Dashboard:
         }
 
 
+def range5_events(d: Path) -> list:
+    """The 5-account bot's trades in the main chart's range-trade shape, with the account number."""
+    edges = {r["ticker"]: (_num(r.get("floor")), _num(r.get("cap"))) for r in _rows(d / "signals.csv")}
+    out = []
+    for r in _rows(d / "trades.csv"):
+        lo, hi = edges.get(r.get("ticker"), (None, None))
+        t = _ts(r["time_utc"])
+        out.append({"t": t, "close": (t // 3600 + 1) * 3600, "side": r.get("side"), "lo": lo, "hi": hi,
+                    "n": r.get("contracts"), "price": _num(r.get("avg_price")), "model": _num(r.get("model")),
+                    "status": "won" if str(r.get("won")) == "1" else "lost", "pnl": _num(r.get("pnl")),
+                    "cost": _num(r.get("cost")), "acct": int(r.get("account") or 0)})
+    for p in _json(d / "open_positions.json", []):
+        lo, hi = edges.get(p.get("ticker"), (None, None))
+        t = _ts(p["time_utc"])
+        out.append({"t": t, "close": p.get("close_ts") or (t // 3600 + 1) * 3600, "side": p.get("side"), "lo": lo,
+                    "hi": hi, "n": p.get("contracts"), "price": _num(p.get("avg_price")), "model": _num(p.get("model")),
+                    "status": "open", "pnl": None, "cost": _num(p.get("cost")), "acct": int(p.get("account") or 0)})
+    return out
+
+
 def _range5(self) -> dict:
     from .dashboard_range5 import range5_data
     with self.lock:
@@ -558,10 +578,17 @@ def make_handler(dash: Dashboard, token: str):
             self.wfile.write(body)
 
         def do_GET(self):
+            # ?v=range5 shows the same chart with the 5-account bot's trades (embedded at the top of /range5/)
+            r5 = self.path.endswith("?v=range5") and "range5" in dash.logs
+            if r5:
+                self.path = self.path[: -len("?v=range5")]
             if self.path == root:
                 self._send(200, page, "text/html; charset=utf-8")
             elif self.path == root + "history.json":
-                self._send(200, json.dumps(dash.history()).encode(), "application/json")
+                h = dash.history()
+                if r5:
+                    h["range"], h["buys"] = range5_events(dash.logs["range5"]), []
+                self._send(200, json.dumps(h).encode(), "application/json")
             elif self.path.startswith(root + "levels.json"):
                 since = 0
                 if "?since=" in self.path:
@@ -637,21 +664,24 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 .big{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--mut)}
 .key i{display:inline-block;width:12px;height:10px;margin-right:4px;vertical-align:middle;border-radius:2px}
+body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:var(--card)}
 </style></head><body><div class="wrap">
-<div class="top"><h1>Paper bots, live</h1><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
+<div class="top"><h1 class="nor5">Paper bots, live</h1><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
 <div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button>
 <span class="mut" id="zinfo"></span></div>
 <div class="card">
-<div class="key"><span><i style="background:var(--no);opacity:.35"></i>range NO band</span><span><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
-<span>band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span>markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
+<div class="key r5only" style="display:none"><span>trade bands: light shade = <b>won</b>, dark shade = <b>lost</b>, dashed outline = open; color = account (1 blue · 2 orange · 3 green · 4 gold · 5 purple)</span></div>
+<div class="key"><span class="nor5"><i style="background:var(--no);opacity:.35"></i>range NO band</span><span class="nor5"><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
+<span class="nor5">band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span class="nor5">markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
 <span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin: 60-second BRTI average (black, what Kalshi settles on), BRTI each second (light gray), and every trade</div><canvas id="c"></canvas>
-<div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas>
+<div class="nor5"><div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas></div>
 </div></div></div>
 <div class="mut" style="font-size:12px;margin-top:4px">Scroll sideways (or drag the scrollbar) to go back through the full history. Both graphs move together.</div>
 </div>
+<div class="nor5">
 <div class="card" style="margin-top:12px"><b>All trades</b> <span class="mut" id="tinfo"></span>
 <div class="key" id="wl" style="margin:6px 0 8px;font-size:13px;color:var(--fg)"></div>
 <div class="tscroll"><table id="trades"></table></div></div>
@@ -667,9 +697,14 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 <div class="card"><div class="mut">Fast-push bot, settled</div><div class="big" id="sf"></div></div>
 </div>
 <p class="mut">BRTI is the index Kalshi settles on; settlement is its average over the last 60 seconds. Paper trades only. Updates every 2 seconds.</p>
-</div>
+</div></div>
 <script>
 let D=null,H=null,P=[];          // live data, history, merged prices [[t,p]]
+const R5=location.search.includes('v=range5'),QS=R5?'?v=range5':'';   // chart-only view for the 5-account bot page
+if(R5){document.body.classList.add('r5');document.querySelector('.r5only').style.display=''}
+// 5-account view: each account has its own color; a winning trade is a light shade of it, a losing trade a dark shade
+const ACOL={1:[42,120,214],2:[235,104,52],3:[27,175,122],4:[201,133,0],5:[98,80,214]};
+function acol(r,kind){const c=ACOL[r.acct]||[120,120,120],m=kind==='light'?c.map(v=>Math.round(v+(255-v)*.55)):kind==='dark'?c.map(v=>Math.round(v*.55)):c;return `rgb(${m.join(',')})`}
 const ZOOMS=[16,32,64,128,256,512];let zi=3;  // pixels per 15 minutes
 let follow=true;
 const $=id=>document.getElementById(id);
@@ -696,7 +731,7 @@ function avg60(tL,tR){let a=0;while(a<P.length&&P[a][0]<tL-120)a++;const out=[];
  for(let i=a;i<P.length&&P[i][0]<=tR+60;i++){sum+=P[i][1];n++;while(P[j][0]<=P[i][0]-60){sum-=P[j][1];n--;j++}
   if(P[i][0]>=tL-60)out.push([P[i][0],P[i][0]-P[j][0]>=40||i-j>=50?sum/n:null])}return out}
 function merge(pts){if(!pts.length)return;const last=P.length?P[P.length-1][0]:0;for(const p of pts)if(p[0]>last)P.push(p)}
-async function loadHistory(){try{const r=await fetch('history.json',{cache:'no-store'});H=await r.json();
+async function loadHistory(){try{const r=await fetch('history.json'+QS,{cache:'no-store'});H=await r.json();
  const live=P.filter(p=>p[0]>(H.prices.length?H.prices[H.prices.length-1][0]:0));P=H.prices.concat(live);layout()}catch(e){}}
 let LVR=[];
 async function loadLevels(){try{const since=LVR.length?LVR[LVR.length-1][0]:0;const r=await fetch('levels.json?since='+since,{cache:'no-store'});
@@ -762,7 +797,11 @@ function draw(){
   for(const e of edges){if(e<lo||e>hi)continue;const y=Math.round(Y(e))+.5;g.beginPath();g.moveTo(x0,y);g.lineTo(x1,y);g.stroke()}
   g.globalAlpha=1}
 
- for(const r of rng){const x0=X(r.close-3600),x1=X(r.close),c=css(r.side==='NO'?'--no':'--yes');
+ for(const r of rng){const x0=X(r.close-3600),x1=X(r.close);
+  if(R5){g.fillStyle=acol(r,r.status==='won'?'light':r.status==='lost'?'dark':'');g.globalAlpha=r.status==='won'?.45:r.status==='lost'?.6:.12;
+   g.fillRect(x0,Y(r.hi),x1-x0,Y(r.lo)-Y(r.hi));g.globalAlpha=1;g.strokeStyle=acol(r,r.status==='lost'?'dark':'');g.lineWidth=1.5;
+   if(r.status==='open')g.setLineDash([4,3]);g.strokeRect(x0,Y(r.hi),x1-x0,Y(r.lo)-Y(r.hi));g.setLineDash([]);continue}
+  const c=css(r.side==='NO'?'--no':'--yes');
   g.fillStyle=c;g.globalAlpha=.10;g.fillRect(x0,Y(r.hi),x1-x0,Y(r.lo)-Y(r.hi));g.globalAlpha=1;
   g.strokeStyle=css(st[r.status]);g.lineWidth=1.5;g.strokeRect(x0,Y(r.hi),x1-x0,Y(r.lo)-Y(r.hi));
 }
@@ -809,14 +848,14 @@ function draw(){
     const sc=over(x,yy,tw,th);if(!best||sc<best[2])best=[x,yy,sc];if(sc===0)break}if(best[2]===0)break}
   return drawBox(best[0],best[1],tw,th,txt,col)};
  const full=ZOOMS[zi]>=128,short0=ZOOMS[zi]>=32;
- for(const r of rng){const y=at(r.t)??(r.lo+r.hi)/2;const x=X(r.t),yd=Y(y),col=css(st[r.status]),mid=Y((r.lo+r.hi)/2),short=short0&&x>=L&&x<=w-R;
-  const res=r.status==='open'?'OPEN':r.status.toUpperCase()+' '+money(r.pnl);
-  const texts=[`${hm(r.t)} ${r.side} ${usd(r.lo)}–${usd(r.hi+0.01)} x${r.n} @${Math.round(r.price*100)}¢, model ${r.model?(r.model*100).toFixed(1):'?'}¢ → ${res}`,
-   `${hm(r.t)} ${r.side} x${r.n} @${Math.round(r.price*100)}¢, model ${r.model?(r.model*100).toFixed(1):'?'}¢ → ${res}`,`${r.side} @${Math.round(r.price*100)}¢ ${res}`];
+ for(const r of rng){const y=at(r.t)??(r.lo+r.hi)/2;const x=X(r.t),yd=Y(y),col=R5?acol(r,'dark'):css(st[r.status]),mid=Y((r.lo+r.hi)/2),short=short0&&x>=L&&x<=w-R;
+  const res=r.status==='open'?'OPEN':r.status.toUpperCase()+' '+money(r.pnl),ac=R5?`#${r.acct} `:'';
+  const texts=[`${ac}${hm(r.t)} ${r.side} ${usd(r.lo)}–${usd(r.hi+0.01)} x${r.n} @${Math.round(r.price*100)}¢, model ${r.model?(r.model*100).toFixed(1):'?'}¢ → ${res}`,
+   `${ac}${hm(r.t)} ${r.side} x${r.n} @${Math.round(r.price*100)}¢, model ${r.model?(r.model*100).toFixed(1):'?'}¢ → ${res}`,`${ac}${r.side} @${Math.round(r.price*100)}¢ ${res}`];
   if(!full)texts.splice(0,2);
   if(short){const [lx,ly,tw]=boxLabel(x,texts,col,X(r.close-3600),X(r.close),Y(r.hi),Y(r.lo));const ex=lx>x?lx:(lx+tw<x?lx+tw:x);
    g.strokeStyle=col;g.lineWidth=1.2;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yd);g.lineTo(x,ly);g.lineTo(ex,ly);g.stroke()}
-  g.setLineDash([]);marker(g,'Range',x,yd,col)}
+  g.setLineDash([]);marker(g,'Range',x,yd,R5?acol(r,r.status==='won'?'light':r.status==='lost'?'dark':''):col)}
  for(const b of (H?H.buys:[]).filter(b=>b.t>=tL&&b.t<=tR)){const y=at(b.t);if(y==null)continue;const x=X(b.t),yy=Y(y),up=b.side==='YES',short=short0&&x>=L&&x<=w-R;
   marker(g,b.bot,x,yy,css(st[b.status]));
   if(short){const col=css(st[b.status]),ty=yy+(up?-28:28);
