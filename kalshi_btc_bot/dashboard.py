@@ -16,6 +16,7 @@ import logging
 import os
 import threading
 import time
+import zlib
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -101,14 +102,36 @@ def read_price_hour(path: Path, res: int) -> list[list[float]]:
     """One hour of the breakdown bot's 1-second price log, cut to one point per `res` seconds."""
     out: dict[int, float] = {}
     try:
-        with gzip.open(path, "rt") as f:
-            for line in f:
-                a = line.split(",")
-                if not a[0].isdigit() or not a[1]:
-                    continue
-                out[int(a[0]) // res * res] = float(a[1])
-    except (OSError, EOFError, ValueError):
-        pass  # the current hour is still being written; the live feed covers it
+        raw = path.read_bytes()
+    except OSError:
+        return []
+    # The file is appended to by the bot, one gzip member per run. A member cut off by a restart
+    # (or still being written) is decompressed as far as it goes, then reading resumes at the next member.
+    text, pos = [], 0
+    while pos < len(raw):
+        d = zlib.decompressobj(31)
+        for k in range(pos, len(raw), 4096):  # in chunks, so a broken member still yields what came before the break
+            try:
+                text.append(d.decompress(raw[k:k + 4096]))
+            except zlib.error:
+                break
+            if d.eof:
+                break
+        if d.eof and d.unused_data:
+            pos = len(raw) - len(d.unused_data)
+            continue
+        nxt = raw.find(b"\x1f\x8b\x08", pos + 1)
+        if d.eof or nxt < 0:
+            break
+        pos = nxt
+    for line in b"".join(text).decode("utf-8", "replace").splitlines():
+        a = line.split(",")
+        if len(a) < 2 or not a[0].isdigit() or not a[1]:
+            continue
+        try:
+            out[int(a[0]) // res * res] = float(a[1])
+        except ValueError:
+            continue
     return [[t, out[t]] for t in sorted(out)]
 
 
@@ -316,8 +339,12 @@ class Dashboard:
                 self._hours[key] = (now, read_price_hour(f, res))
             pts += self._hours[key][1]
         with self.lock:
-            live = sorted(self.prices)
-            pts += [[t, self.prices[t]] for t in live[::res] if not pts or t > pts[-1][0]]
+            live = {t // res * res: self.prices[t] for t in sorted(self.prices)}
+        # the dashboard's own live prices (last 3 hours) fill any hole in the bot's files, e.g. after a bot restart
+        have = {t for t, _ in pts}
+        add = [[t, v] for t, v in live.items() if t not in have]
+        if add:
+            pts = sorted(pts + add)
         if pts:
             self.first_ts = pts[0][0]
         lad = [[c, e] for c, e in sorted(self.ladders.items())]
@@ -812,7 +839,7 @@ function draw(){
  // when the whole history fits on screen, keep "now" at the right edge (blank before the history starts, not after now)
  const tL=fits?T1+90/pps()-sc.clientWidth/pps():T0+sc.scrollLeft/pps(),tR=tL+sc.clientWidth/pps();
  // ---------------- price chart
- const [g,w]=setup($('c'),430),h=430,L=66,R=GUT,T=8,B=22;const gut=[];
+ const CH=R5?516:430,[g,w]=setup($('c'),CH),h=CH,L=66,R=GUT,T=8,B=22;const gut=[];
  const X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
  const vis=P.filter(p=>p[0]>=tL-60&&p[0]<=tR+60);
  const ses=(H?H.sessions:[]).concat(D.session&&D.session.strike?[[D.session.open_ts,D.session.strike]]:[]).filter(s=>s[0]+900>=tL&&s[0]<=tR);
