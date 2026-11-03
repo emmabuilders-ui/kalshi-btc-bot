@@ -62,7 +62,7 @@ th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--card)
 <div class="top"><span>Total profit <span class="big" id="tot">–</span></span>
 <span id="sub" class="mut"></span><span id="err" class="lost"></span></div>
 <div class="card" style="padding:8px"><h2 style="margin:4px 4px 6px">Bitcoin and this bot's trades</h2>
-<iframe src="../?v=range5" title="Bitcoin chart" style="width:100%;height:660px;border:0;display:block"></iframe></div>
+<iframe src="../?v=range5" title="Bitcoin chart" style="width:100%;height:700px;border:0;display:block"></iframe></div>
 <div class="card"><h2>Profit by account (settled trades)</h2><div class="legend" id="leg"></div>
 <canvas id="pl" height="320"></canvas></div>
 <div class="card"><h2>Accounts</h2><div class="scroll"><table id="acc"></table></div></div>

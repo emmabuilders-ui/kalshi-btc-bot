@@ -668,18 +668,21 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 </style></head><body><div class="wrap">
 <div class="top"><h1 class="nor5">Paper bots, live</h1><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
-<div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button>
+<div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button>
 <span class="mut" id="zinfo"></span></div>
 <div class="card">
 <div class="key r5only" style="display:none"><span>trade bands: light shade = <b>won</b>, dark shade = <b>lost</b>, dashed outline = open; color = account (1 blue · 2 orange · 3 green · 4 gold · 5 purple)</span></div>
 <div class="key"><span class="nor5"><i style="background:var(--no);opacity:.35"></i>range NO band</span><span class="nor5"><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
 <span class="nor5">band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span class="nor5">markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
-<span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
+<span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><b style="color:var(--sup)">╌</b> rising support / <b style="color:var(--res)">╌</b> falling resistance trend lines (5-min swings), × = break</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin: 60-second BRTI average (black, what Kalshi settles on), BRTI each second (light gray), and every trade</div><canvas id="c"></canvas>
 <div class="nor5"><div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas></div>
 </div></div></div>
-<div class="mut" style="font-size:12px;margin-top:4px">Scroll sideways (or drag the scrollbar) to go back through the full history. Both graphs move together.</div>
+<div style="display:flex;align-items:center;gap:10px;margin-top:6px"><span class="mut" id="slL" style="font-size:12px;white-space:nowrap"></span>
+<input type="range" id="slider" min="0" max="1000" value="1000" style="flex:1;accent-color:var(--ladder-t);height:22px">
+<span class="mut" id="slR" style="font-size:12px;white-space:nowrap">now</span></div>
+<div class="mut" style="font-size:12px;margin-top:2px">Drag the slider (or scroll sideways) to move through the full history. Both graphs move together.</div>
 </div>
 <div class="nor5">
 <div class="card" style="margin-top:12px"><b>All trades</b> <span class="mut" id="tinfo"></span>
@@ -741,14 +744,46 @@ async function tick(){try{const r=await fetch('data.json',{cache:'no-store'});D=
 function layout(){
  if(!D)return;const [T0,T1]=range();const w=sc.clientWidth;
  const total=Math.max(w,(T1-T0)*pps()+90);$('inner').style.width=total+'px';$('stick').style.width=w+'px';
- if(follow)sc.scrollLeft=total;draw()}
-sc.addEventListener('scroll',()=>{follow=sc.scrollLeft+sc.clientWidth>=sc.scrollWidth-30;draw()});
+ if(follow)sc.scrollLeft=total;syncSlider();draw()}
+sc.addEventListener('scroll',()=>{follow=sc.scrollLeft+sc.clientWidth>=sc.scrollWidth-30;syncSlider();draw()});
+// time slider: 0 = start of the history, 1000 = now
+const sl=$('slider');let slDrag=false;
+function syncSlider(){if(slDrag)return;const m=sc.scrollWidth-sc.clientWidth;sl.value=m>0?Math.round(sc.scrollLeft/m*1000):1000}
+sl.addEventListener('input',()=>{slDrag=true;const m=sc.scrollWidth-sc.clientWidth;sc.scrollLeft=sl.value/1000*m;follow=sl.value>=999;draw()});
+sl.addEventListener('change',()=>{slDrag=false});
 function zoom(d){if(!D)return;const [T0]=range();const mid=T0+(sc.scrollLeft+sc.clientWidth/2)/pps();
  zi=Math.max(0,Math.min(ZOOMS.length-1,zi+d));layout();if(!follow)sc.scrollLeft=(mid-T0)*pps()-sc.clientWidth/2;draw()}
 $('zin').onclick=()=>zoom(1);$('zout').onclick=()=>zoom(-1);
 $('back').onclick=()=>{follow=false;sc.scrollLeft-=3600*pps()};
 $('live').onclick=()=>{follow=true;layout()};
-let showLv=true;$('lvbtn').onclick=()=>{showLv=!showLv;$('lvbtn').textContent=(showLv?'Hide':'Show')+' support/resistance';draw()};
+let showLv=true;let showTl=true;$('tlbtn').onclick=()=>{showTl=!showTl;$('tlbtn').textContent=(showTl?'Hide':'Show')+' trend lines';draw()};
+// Trend lines, same definition as the trend line research (research/trend_lines/tl.py), 5-minute swings:
+// swing low = lowest BRTI within 5 min either side (known 5 min later); support = line from an earlier, lower swing low
+// (up to 10 back, within 4 h) to the latest one, no print more than $15 below it in between, most touches wins
+// (longest on ties). Resistance mirrors with falling swing highs. Drawn until the first print $5 through it
+// (marked ×) or until the next swing point takes over.
+const TLN=300,TLTOL=15,TLB=5,TLSPAN=4*3600;let TL=[],TLkey='';
+function trendLines(){if(P.length<3)return TL;const key=P[0][0]+':'+Math.floor(P[P.length-1][0]/30);  // recompute at most every 30 sif(key===TLkey)return TL;TLkey=key;
+ const n=P.length,t=P.map(p=>p[0]),v=P.map(p=>p[1]);
+ // centered rolling min/max over +/-TLN seconds (two-pointer deques)
+ const swing=(isLow)=>{const out=[];const dq=[];let r=0,l=0;
+  for(let i=0;i<n;i++){while(r<n&&t[r]<=t[i]+TLN){while(dq.length&&(isLow?v[dq[dq.length-1]]>=v[r]:v[dq[dq.length-1]]<=v[r]))dq.pop();dq.push(r);r++}
+   while(dq.length&&t[dq[0]]<t[i]-TLN)dq.shift();
+   if(t[i]-t[0]>=TLN&&t[n-1]-t[i]>=TLN&&dq.length&&dq[0]===i&&(!out.length||t[i]-t[out[out.length-1]]>TLN))out.push(i)}
+  return out};
+ const lines=[];
+ for(const [side,piv] of [['sup',swing(true)],['res',swing(false)]]){const sg=side==='sup'?1:-1;
+  for(let k=1;k<piv.length;k++){const i2=piv[k],p2=v[i2];let best=null;
+   for(let j=k-1;j>=Math.max(k-10,0);j--){const i1=piv[j],p1=v[i1];if(t[i2]-t[i1]>TLSPAN)break;if(sg*(p2-p1)<=0)continue;
+    const sl=(p2-p1)/(t[i2]-t[i1]);let ok=true;for(let q=i1;q<=i2;q++)if(sg*(v[q]-(p2+sl*(t[q]-t[i2])))<-TLTOL){ok=false;break}
+    if(!ok)continue;let tc=2;for(let m=j+1;m<k;m++)if(Math.abs(v[piv[m]]-(p2+sl*(t[piv[m]]-t[i2])))<=TLTOL)tc++;
+    if(!best||tc>=best.tc)best={tc,i1,p1,sl}}
+   if(!best)continue;
+   // active from now until the next swing point of this side is confirmed; ends early at a break
+   const until=k+1<piv.length?t[piv[k+1]]+TLN:t[n-1];let end=until,brk=null;
+   for(let q=i2;q<n&&t[q]<=until;q++)if(sg*(v[q]-(p2+best.sl*(t[q]-t[i2])))<-TLB){end=t[q];brk=[t[q],v[q]];break}
+   lines.push({side,t0:t[best.i1],v0:best.p1,sl:best.sl,t1:end,brk,tc:best.tc})}}
+ TL=lines;return TL}$('lvbtn').onclick=()=>{showLv=!showLv;$('lvbtn').textContent=(showLv?'Hide':'Show')+' support/resistance';draw()};
 addEventListener('resize',layout);
 function setup(cv,h){const dpr=devicePixelRatio||1,w=$('stick').clientWidth;cv.style.width=w+'px';cv.style.height=h+'px';
  cv.width=w*dpr;cv.height=h*dpr;const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);return [g,w]}
@@ -766,6 +801,7 @@ function draw(){
  $('err').textContent=D.error||'';
  $('clock').textContent=`${last?hms(last[0]):''} ET · 15-min closes ${hm(D.session&&D.session.close_ts||0)} · hour closes ${hm(D.hour_close)}`;
  $('zinfo').textContent=`${Math.round(sc.clientWidth/pps()/3600*10)/10} hours on screen`;
+ {const [a]=range();const d=new Date(a*1000);$('slL').textContent=fDay.format(d)+' '+hm(a)}
  sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);
  const [T0]=range(),tL=T0+sc.scrollLeft/pps(),tR=tL+sc.clientWidth/pps();
  // ---------------- price chart
@@ -818,6 +854,11 @@ function draw(){
   const tend=Math.min(tR,(LVR[LVR.length-1][0])+60);for(const k in open)flush(k,tend);
   g.globalAlpha=1;g.lineWidth=2.2;g.strokeStyle=css('--target')}
  
+ if(showTl){g.lineWidth=1.4;g.setLineDash([6,4]);
+  for(const l of trendLines()){if(l.t1<tL||l.t0>tR)continue;g.strokeStyle=css(l.side==='sup'?'--sup':'--res');g.globalAlpha=.9;
+   g.beginPath();g.moveTo(X(l.t0),Y(l.v0));g.lineTo(X(l.t1),Y(l.v0+l.sl*(l.t1-l.t0)));g.stroke();
+   if(l.brk){g.setLineDash([]);const bx=X(l.brk[0]),by=Y(l.v0+l.sl*(l.brk[0]-l.t0));g.beginPath();g.moveTo(bx-4,by-4);g.lineTo(bx+4,by+4);g.moveTo(bx+4,by-4);g.lineTo(bx-4,by+4);g.stroke();g.setLineDash([6,4])}}
+  g.setLineDash([]);g.globalAlpha=1}
  // BRTI itself in light gray, the 60-second average (what Kalshi settles on) as the main line
  g.strokeStyle=css('--raw');g.lineWidth=1;g.beginPath();vis.forEach((p,i)=>{const x=X(p[0]),y=Y(p[1]);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
  const av=avg60(tL,tR);g.strokeStyle=css('--line');g.lineWidth=1.6;g.beginPath();let pen=false;
