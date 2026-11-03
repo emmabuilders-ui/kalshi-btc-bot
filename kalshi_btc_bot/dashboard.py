@@ -708,7 +708,7 @@ if(R5){document.body.classList.add('r5');document.querySelector('.r5only').style
 // 5-account view: each account has its own color; a winning trade is a light shade of it, a losing trade a dark shade
 const ACOL={1:[42,120,214],2:[235,104,52],3:[27,175,122],4:[201,133,0],5:[98,80,214]};
 function acol(r,kind){const c=ACOL[r.acct]||[120,120,120],m=kind==='light'?c.map(v=>Math.round(v+(255-v)*.55)):kind==='dark'?c.map(v=>Math.round(v*.55)):c;return `rgb(${m.join(',')})`}
-const ZOOMS=[16,32,64,128,256,512];let zi=3;  // pixels per 15 minutes
+const ZOOMS=[2,4,8,16,32,64,128,256,512];let zi=6;  // pixels per 15 minutes
 let follow=true;
 const $=id=>document.getElementById(id);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -751,7 +751,8 @@ const sl=$('slider');let slDrag=false;
 function syncSlider(){if(slDrag)return;const m=sc.scrollWidth-sc.clientWidth;sl.value=m>0?Math.round(sc.scrollLeft/m*1000):1000}
 sl.addEventListener('input',()=>{slDrag=true;const m=sc.scrollWidth-sc.clientWidth;sc.scrollLeft=sl.value/1000*m;follow=sl.value>=999;draw()});
 sl.addEventListener('change',()=>{slDrag=false});
-function zoom(d){if(!D)return;const [T0]=range();const mid=T0+(sc.scrollLeft+sc.clientWidth/2)/pps();
+function zoom(d){if(!D)return;const [T0,T1]=range();
+ if(d<0&&(T1-T0)*pps()+90<=sc.clientWidth)return;  // the whole history is already on screenconst mid=T0+(sc.scrollLeft+sc.clientWidth/2)/pps();
  zi=Math.max(0,Math.min(ZOOMS.length-1,zi+d));layout();if(!follow)sc.scrollLeft=(mid-T0)*pps()-sc.clientWidth/2;draw()}
 $('zin').onclick=()=>zoom(1);$('zout').onclick=()=>zoom(-1);
 $('back').onclick=()=>{follow=false;sc.scrollLeft-=3600*pps()};
@@ -788,11 +789,14 @@ addEventListener('resize',layout);
 function setup(cv,h){const dpr=devicePixelRatio||1,w=$('stick').clientWidth;cv.style.width=w+'px';cv.style.height=h+'px';
  cv.width=w*dpr;cv.height=h*dpr;const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);return [g,w]}
 function timegrid(g,X,tL,tR,T,B,h,labels){
- for(let t=Math.floor(tL/900)*900;t<=tR;t+=900){const hr=t%3600===0,day=hr&&etMidnight(t);
+ // grid and labels follow Eastern time; zoomed far out, fewer lines and labels
+ const z=ZOOMS[zi],gl=z>=16?900:z>=8?3600:z>=4?3*3600:6*3600,lb=z>=64?900:z>=32?3600:z>=16?3*3600:z>=8?6*3600:z>=4?12*3600:86400;
+ const etH=t=>{const [hh,mm]=fH.format(new Date(t*1000)).split(':').map(Number);return (hh%24)*3600+mm*60};
+ for(let t=Math.floor(tL/900)*900;t<=tR;t+=900){const e=etH(t);if(e%gl&&gl>900||(gl===900?false:t%3600))continue;
+  const hr=t%3600===0,day=hr&&e===0;
   g.strokeStyle=css(hr?'--grid2':'--grid');g.lineWidth=1;g.beginPath();g.moveTo(X(t),T);g.lineTo(X(t),h-B);g.stroke();
-  if(labels){const every=ZOOMS[zi]>=64?900:ZOOMS[zi]>=32?3600:10800;
-   if(t%every===0||day){g.fillStyle=css(day?'--fg':'--mut');g.font=(day||hr?'600 ':'')+'11px system-ui';
-    const d=new Date(t*1000);g.fillText(day?fDay.format(d):hm(t),X(t)-14,h-6)}}}}
+  if(labels&&(e%lb===0||day)){g.fillStyle=css(day?'--fg':'--mut');g.font=(day||hr?'600 ':'')+'11px system-ui';
+   const d=new Date(t*1000);g.fillText(day?fDay.format(d):hm(t),X(t)-14,h-6)}}}
 // right-hand gutter (same on both charts so their time axes line up): the current hour's band labels live here, clear of the price line
 const GUT=110;
 function draw(){
@@ -803,7 +807,9 @@ function draw(){
  $('zinfo').textContent=`${Math.round(sc.clientWidth/pps()/3600*10)/10} hours on screen`;
  {const [a]=range();const d=new Date(a*1000);$('slL').textContent=fDay.format(d)+' '+hm(a)}
  sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);
- const [T0]=range(),tL=T0+sc.scrollLeft/pps(),tR=tL+sc.clientWidth/pps();
+ const [T0,T1]=range(),fits=(T1-T0)*pps()+90<=sc.clientWidth;
+ // when the whole history fits on screen, keep "now" at the right edge (blank before the history starts, not after now)
+ const tL=fits?T1+90/pps()-sc.clientWidth/pps():T0+sc.scrollLeft/pps(),tR=tL+sc.clientWidth/pps();
  // ---------------- price chart
  const [g,w]=setup($('c'),430),h=430,L=66,R=GUT,T=8,B=22;const gut=[];
  const X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
