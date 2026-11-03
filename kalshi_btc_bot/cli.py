@@ -67,6 +67,7 @@ def main(argv=None) -> None:
     d.add_argument("--breakdown", default="/opt/kalshi-logs/breakdown")
     d.add_argument("--range", default="/opt/kalshi-logs-range/range")
     d.add_argument("--fastpush", default="/opt/kalshi-logs-fastpush/fastpush")
+    d.add_argument("--range5", default="/opt/kalshi-logs-range5/range5")
 
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
@@ -124,7 +125,8 @@ def main(argv=None) -> None:
         from pathlib import Path
         from .dashboard import serve
         serve(a.port, Path(a.token_file).read_text().strip(),
-              {"breakdown": Path(a.breakdown), "range": Path(a.range), "fastpush": Path(a.fastpush)})
+              {"breakdown": Path(a.breakdown), "range": Path(a.range), "fastpush": Path(a.fastpush),
+               "range5": Path(a.range5)})
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)

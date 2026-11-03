@@ -80,3 +80,14 @@ def test_one_trade_per_hour_per_account_and_scaling(tmp_path):
     a5 = st["accounts"]["5 YES 90-99c rebuilt +2c doubling"]
     assert a5["trades"] == 1 and a5["next_stake_dollars"] == 4.66
     assert len(ACCOUNTS) == 5
+
+
+def test_range5_chart_data(tmp_path):
+    from kalshi_btc_bot.dashboard_range5 import range5_data
+    (tmp_path / "signals.csv").write_text("time_utc,account,ticker,floor,cap,filled\n2026-11-03 14:55:00,1,T1,80000,80099.99,27\n")
+    (tmp_path / "trades.csv").write_text("time_utc,account,ticker,side,contracts,avg_price,cost,model,won,pnl\n"
+                                         "2026-11-03 14:55:00,1,T1,YES,27,0.92,25.2,0.95,1,1.8\n")
+    (tmp_path / "open_positions.json").write_text("[]")
+    d = range5_data(tmp_path, [[1, 80000.0]])
+    assert d["trades"][0]["account"] == 1 and d["trades"][0]["lo"] == 80000 and d["trades"][0]["won"]
+    assert d["signals"] == 1 and d["unfilled"] == 0 and d["open"] == []

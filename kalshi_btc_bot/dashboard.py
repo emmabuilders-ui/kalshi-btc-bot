@@ -525,8 +525,24 @@ class Dashboard:
         }
 
 
+def _range5(self) -> dict:
+    from .dashboard_range5 import range5_data
+    with self.lock:
+        cut = time.time() - KEEP
+        ts = sorted(t for t in self.prices if t >= cut)
+        pts = [[t, self.prices[t]] for t in ts[::5]]
+    d = self.logs.get("range5")
+    return range5_data(d, pts) if d else {"now": time.time(), "prices": pts, "status": {}, "open": [], "trades": [],
+                                          "signals": 0, "unfilled": 0}
+
+
+Dashboard.range5 = _range5
+
+
 def make_handler(dash: Dashboard, token: str):
+    from .dashboard_range5 import PAGE5
     page = PAGE.encode()
+    page5 = PAGE5.encode()
     root = f"/{token}/"
 
     class H(BaseHTTPRequestHandler):
@@ -556,6 +572,14 @@ def make_handler(dash: Dashboard, token: str):
                 self._send(200, json.dumps(dash.levels.since(since)).encode(), "application/json")
             elif self.path == root + "data.json":
                 self._send(200, json.dumps(dash.data()).encode(), "application/json")
+            elif self.path == root + "range5/":
+                self._send(200, page5, "text/html; charset=utf-8")
+            elif self.path == root + "range5/data.json":
+                self._send(200, json.dumps(dash.range5()).encode(), "application/json")
+            elif self.path == root + "range5":
+                self.send_response(301)
+                self.send_header("Location", root + "range5/")
+                self.end_headers()
             elif self.path == root[:-1]:
                 self.send_response(301)
                 self.send_header("Location", root)
