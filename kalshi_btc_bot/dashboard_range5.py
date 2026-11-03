@@ -55,9 +55,10 @@ th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--card)
 #tip{position:fixed;pointer-events:none;background:var(--card);border:1px solid var(--grid2);border-radius:6px;padding:6px 8px;font-size:12px;display:none;z-index:5}
 .grid2{display:grid;grid-template-columns:1fr;gap:12px}
 @media(min-width:1000px){.grid2{grid-template-columns:1fr 1fr}}
+.navbtn{padding:5px 12px;border:1px solid var(--grid2);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-weight:600;font-size:13px}.navbtn:hover{border-color:var(--a1)}
 .grid2>*{min-width:0}.card{min-width:0}
 </style></head><body><div class="wrap">
-<div class="top"><h1>Hourly range bot · 5 paper accounts</h1>
+<div class="top"><a class="navbtn" href="../">← Main chart (3 bots)</a><h1>Hourly range bot · 5 paper accounts</h1>
 <span class="mut">Paper only, no real orders · times ET · updates every 10 s</span></div>
 <div class="top"><span>Total profit <span class="big" id="tot">–</span></span>
 <span id="sub" class="mut"></span><span id="err" class="lost"></span></div>
