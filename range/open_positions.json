@@ -1,1 +1,26 @@
-[]
+[
+ {
+  "time_utc": "2026-11-04 16:30:00",
+  "ticker": "KXBTC-26NOV0412-B80650",
+  "side": "NO",
+  "mins_left": 30,
+  "contracts": 20,
+  "avg_price": 0.9,
+  "fee": 0.13,
+  "cost": 18.13,
+  "model": 0.9217,
+  "close_ts": 1793811600
+ },
+ {
+  "time_utc": "2026-11-04 16:31:00",
+  "ticker": "KXBTC-26NOV0412-B80350",
+  "side": "NO",
+  "mins_left": 29,
+  "contracts": 20,
+  "avg_price": 0.9,
+  "fee": 0.13,
+  "cost": 18.13,
+  "model": 0.9255,
+  "close_ts": 1793811600
+ }
+]
