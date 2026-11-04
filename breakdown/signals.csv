@@ -447,3 +447,13 @@ time_utc,ticker,side,level,level_price,secs_left,price,strike,stack,proxy_bias,a
 2026-11-03 23:21:33,KXBTC15M-26NOV031830-30,NO,hard,77738.7,515,77731.1,77783.5,mixed,5.23,,,,skip: outside 1-2 min window
 2026-11-03 23:22:39,KXBTC15M-26NOV031830-30,YES,hard_top,77799.7,450,77810.1,77783.5,up,5.23,,,,skip: outside 1-2 min window
 2026-11-03 23:23:33,KXBTC15M-26NOV031830-30,YES,15min_high,77807.96,395,77823.77,77783.5,up,5.23,,,,skip: outside 1-2 min window
+2026-11-03 23:34:30,KXBTC15M-26NOV031845-45,NO,hard,77802.7,640,77786.88,77829.72,mixed,4.89,,,,skip: outside 1-2 min window
+2026-11-03 23:35:14,KXBTC15M-26NOV031845-45,YES,hard_top,77848.23,595,77885.51,77829.72,up,4.89,,,,skip: outside 1-2 min window
+2026-11-03 23:41:57,KXBTC15M-26NOV031845-45,NO,15min,77730.03,190,77710.76,77829.72,mixed,0.05,0.985,619.12,"[[0.015, 619.12], [0.014, 949.42], [0.013, 164.0], [0.012, 3755.26], [0.011, 3361.0], [0.01, 10059.94], [0.009, 804.0], [0.008, 2059.0]]",skip: outside 1-2 min window
+2026-11-03 23:49:10,KXBTC15M-26NOV031900-00,NO,hard,77640.05,660,77629.77,77714.48,mixed,0.05,,,,skip: outside 1-2 min window
+2026-11-04 00:01:54,KXBTC15M-26NOV031915-15,NO,hard,77335.81,795,77321.26,77323.03,mixed,-6.31,,,,skip: outside 1-2 min window
+2026-11-04 00:03:53,KXBTC15M-26NOV031915-15,NO,15min,77318.54,675,77312.21,77323.03,mixed,-6.31,,,,skip: outside 1-2 min window
+2026-11-04 00:10:27,KXBTC15M-26NOV031915-15,YES,hard_top,77434.84,280,77440.26,77323.03,mixed,-6.31,0.908,80.01,"[[0.092, 80.01], [0.091, 202.78], [0.09, 422.01], [0.089, 118.0], [0.088, 454.04], [0.087, 118.1], [0.086, 361.04], [0.085, 658.0]]",skip: outside 1-2 min window
+2026-11-04 00:15:35,KXBTC15M-26NOV031930-30,YES,hard_top,77298.02,865,77311.52,77264.11,mixed,-6.31,,,,skip: outside 1-2 min window
+2026-11-04 00:18:06,KXBTC15M-26NOV031930-30,NO,hard,77189.4,720,77178.15,77264.11,mixed,-3.13,,,,skip: outside 1-2 min window
+2026-11-04 00:30:54,KXBTC15M-26NOV031945-45,YES,hard_top,77143.39,855,77149.19,77081.92,mixed,2.07,,,,skip: outside 1-2 min window
