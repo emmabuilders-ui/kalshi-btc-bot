@@ -388,6 +388,8 @@ class LateBreakdownPaper:
         v, b, p = self.series.value(t), self.series.brti.get(t), self.series.proxy.get(t)
         f = lambda x: "" if x is None else f"{x:.2f}"
         self._price_fh.write(f"{t},{f(v)},{source},{f(b)},{f(p)},{self.series.bias:.2f}\n")
+        if t % 60 == 0:
+            self._price_fh.flush()  # so a restart loses at most a minute of the price log, not the whole hour
 
     def _status(self, now: float, note: str = ""):
         trades = self.out / "trades.csv"
