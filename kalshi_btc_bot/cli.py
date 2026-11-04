@@ -49,11 +49,29 @@ def main(argv=None) -> None:
     rp.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     rp.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    rm = sub.add_parser("paper-range5", help="paper trade the 5-account hourly range plan (no orders are sent)")
+    rm.add_argument("--out", default="runs/range5")
+    rm.add_argument("--scale", type=float, default=1 / 3, help="1.0 = sizes for about $3,000; default 1/3 (about $1,000)")
+    rm.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    rm.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     fp = sub.add_parser("paper-fastpush", help="paper trade fast-push level breaks on the 15-min markets (no orders are sent)")
     fp.add_argument("--out", default="runs/fastpush")
     fp.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
     fp.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     fp.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
+    fr = sub.add_parser("paper-fastpush-range", help="paper trade fast-push level breaks on the hourly range bands (no orders are sent)")
+    fr.add_argument("--out", default="runs/fastpush-range")
+    fr.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
+    fr.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    fr.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
+    fv = sub.add_parser("paper-favorite", help="paper trade YES favorites (75-84c, last 3 min) on the hourly range bands (no orders are sent)")
+    fv.add_argument("--out", default="runs/favorite")
+    fv.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
+    fv.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    fv.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
     d = sub.add_parser("dashboard", help="serve a live chart of the paper bots (read-only)")
     d.add_argument("--port", type=int, default=8080)
@@ -61,6 +79,9 @@ def main(argv=None) -> None:
     d.add_argument("--breakdown", default="/opt/kalshi-logs/breakdown")
     d.add_argument("--range", default="/opt/kalshi-logs-range/range")
     d.add_argument("--fastpush", default="/opt/kalshi-logs-fastpush/fastpush")
+    d.add_argument("--range5", default="/opt/kalshi-logs-range5/range5")
+    d.add_argument("--fastpush-range", default="/opt/kalshi-logs-fastpush-range/fastpush-range")
+    d.add_argument("--favorite", default="/opt/kalshi-logs-favorite/favorite")
 
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
@@ -108,14 +129,24 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-range":
         from .range_paper import from_env as range_env
         range_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-range5":
+        from .range_multi import from_env as r5_env
+        r5_env(a.out, a.push_logs, a.scale).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "paper-fastpush":
         from .fast_push import from_env as fp_env
         fp_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-fastpush-range":
+        from .fast_push_range import from_env as fpr_env
+        fpr_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-favorite":
+        from .favorite_paper import from_env as fav_env
+        fav_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "dashboard":
         from pathlib import Path
         from .dashboard import serve
         serve(a.port, Path(a.token_file).read_text().strip(),
-              {"breakdown": Path(a.breakdown), "range": Path(a.range), "fastpush": Path(a.fastpush)})
+              {"breakdown": Path(a.breakdown), "range": Path(a.range), "fastpush": Path(a.fastpush),
+               "range5": Path(a.range5), "fastpush_range": Path(a.fastpush_range), "favorite": Path(a.favorite)})
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)
