@@ -73,6 +73,14 @@ def main(argv=None) -> None:
     fv.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     fv.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    tp = sub.add_parser("paper-trend", help="paper trade trend-in YES favorites 4-20 min before the hourly close (no orders are sent)")
+    tp.add_argument("--rule", choices=["broad", "tight"], default="tight",
+                    help="broad = YES 61-80c within 80%% of the band centre or 81-90c within 40%%; tight = YES 70-84c within 40%%")
+    tp.add_argument("--out", default="runs/trend")
+    tp.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
+    tp.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    tp.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     d = sub.add_parser("dashboard", help="serve a live chart of the paper bots (read-only)")
     d.add_argument("--port", type=int, default=8080)
     d.add_argument("--token-file", default="/etc/kalshi-bot/dash_token", help="file holding the secret page path")
@@ -82,6 +90,8 @@ def main(argv=None) -> None:
     d.add_argument("--range5", default="/opt/kalshi-logs-range5/range5")
     d.add_argument("--fastpush-range", default="/opt/kalshi-logs-fastpush-range/fastpush-range")
     d.add_argument("--favorite", default="/opt/kalshi-logs-favorite/favorite")
+    d.add_argument("--trend-broad", default="/opt/kalshi-logs-trend-broad/trend-broad")
+    d.add_argument("--trend-tight", default="/opt/kalshi-logs-trend-tight/trend-tight")
 
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
@@ -141,12 +151,16 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-favorite":
         from .favorite_paper import from_env as fav_env
         fav_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-trend":
+        from .trend_paper import from_env as trend_env
+        trend_env(a.out, a.push_logs, a.contracts, a.rule).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "dashboard":
         from pathlib import Path
         from .dashboard import serve
         serve(a.port, Path(a.token_file).read_text().strip(),
               {"breakdown": Path(a.breakdown), "range": Path(a.range), "fastpush": Path(a.fastpush),
-               "range5": Path(a.range5), "fastpush_range": Path(a.fastpush_range), "favorite": Path(a.favorite)})
+               "range5": Path(a.range5), "fastpush_range": Path(a.fastpush_range), "favorite": Path(a.favorite),
+               "trend_broad": Path(a.trend_broad), "trend_tight": Path(a.trend_tight)})
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)
