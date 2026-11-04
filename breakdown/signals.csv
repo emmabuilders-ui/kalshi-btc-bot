@@ -466,3 +466,13 @@ time_utc,ticker,side,level,level_price,secs_left,price,strike,stack,proxy_bias,a
 2026-11-04 01:19:25,KXBTC15M-26NOV032030-30,NO,hard,76769.57,635,76746.65,76768.18,down,2.27,,,,skip: outside 1-2 min window
 2026-11-04 01:30:45,KXBTC15M-26NOV032045-45,YES,hard_top,76895.56,855,76895.59,76878.48,mixed,1.69,,,,skip: outside 1-2 min window
 2026-11-04 01:32:00,KXBTC15M-26NOV032045-45,NO,hard,76809.09,780,76803.01,76878.48,down,1.69,,,,skip: outside 1-2 min window
+2026-11-04 01:45:15,KXBTC15M-26NOV032100-00,NO,hard,76769.31,885,76766.98,76799.6,down,1.93,,,,skip: outside 1-2 min window
+2026-11-04 01:45:30,KXBTC15M-26NOV032100-00,NO,15min,76756.95,870,76755.47,76799.6,down,1.93,,,,skip: outside 1-2 min window
+2026-11-04 01:47:50,KXBTC15M-26NOV032100-00,YES,hard_top,76807.82,730,76819.73,76799.6,down,1.87,,,,skip: outside 1-2 min window
+2026-11-04 02:00:30,KXBTC15M-26NOV032115-15,YES,hard_top,76933.81,870,76944.72,76891.49,mixed,2.62,,,,skip: outside 1-2 min window
+2026-11-04 02:00:40,KXBTC15M-26NOV032115-15,YES,15min_high,76944.61,860,76962.39,76891.49,mixed,2.62,,,,skip: outside 1-2 min window
+2026-11-04 02:10:40,KXBTC15M-26NOV032115-15,NO,hard,76896.4,260,76890.98,76891.49,mixed,2.65,0.54,208.0,"[[0.46, 208.0], [0.45, 3630.02], [0.44, 2006.1], [0.43, 1858.0], [0.42, 1273.0], [0.41, 1398.45], [0.4, 3863.09], [0.39, 1708.58]]",skip: outside 1-2 min window
+2026-11-04 02:16:00,KXBTC15M-26NOV032130-30,NO,hard,76809.75,840,76803.0,76857.33,mixed,2.58,,,,skip: outside 1-2 min window
+2026-11-04 02:16:20,KXBTC15M-26NOV032130-30,NO,15min,76758.33,820,76773.43,76857.33,mixed,2.67,,,,skip: outside 1-2 min window
+2026-11-04 02:30:05,KXBTC15M-26NOV032145-45,NO,hard,76646.21,895,76633.48,76674.95,down,3.57,,,,skip: outside 1-2 min window
+2026-11-04 02:40:15,KXBTC15M-26NOV032145-45,NO,15min,76577.37,285,76572.49,76674.95,down,4.31,0.89,7520.98,"[[0.11, 7520.98], [0.1, 5048.42], [0.099, 122.01], [0.098, 1121.0], [0.097, 112.0], [0.096, 1122.0], [0.095, 491.0], [0.094, 1351.0]]",skip: outside 1-2 min window
