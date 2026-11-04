@@ -135,6 +135,7 @@ def history_events(L: dict[str, Path]) -> dict:
                     "n": p["contracts"], "price": p["avg_price"], "model": p.get("model"), "status": "open", "pnl": None,
                     "cost": p.get("cost")})
     rng += fastpush_range_events(L.get("fastpush_range"))
+    rng += favorite_events(L.get("favorite"))
     sessions = []
     for r in _rows(L["breakdown"] / "sessions.csv"):
         k = _num(r.get("strike"))
@@ -174,6 +175,31 @@ def history_events(L: dict[str, Path]) -> dict:
                          "cost": _num(tr.get("cost")) if tr else None,
                          "pnl": _num(tr.get("pnl")) if tr else None})
     return {"range": rng, "sessions": sessions, "levels": levels, "buys": buys}
+
+
+def favorite_events(d: Path | None) -> list:
+    """The YES-favorite bot's trades (same log layout as the range bot), bot 'Favorite'."""
+    if d is None:
+        return []
+    out = []
+    for r in _rows(d / "trades.csv"):
+        t = _ts(r["time_utc"])
+        out.append({"t": t, "close": (t // 3600 + 1) * 3600, "side": r["side"], "bot": "Favorite",
+                    "lo": None, "hi": None, "n": r.get("contracts"), "price": _num(r.get("avg_price")), "model": None,
+                    "status": "won" if str(r.get("won")) == "1" else "lost", "pnl": _num(r.get("pnl")),
+                    "cost": _num(r.get("cost")), "ticker": r.get("ticker")})
+    for p in range_positions(d):
+        t = _ts(p["time_utc"])
+        out.append({"t": t, "close": p["close_ts"], "side": p["side"], "bot": "Favorite", "lo": p["lo"], "hi": p["hi"],
+                    "n": p["contracts"], "price": p["avg_price"], "model": None, "status": "open", "pnl": None,
+                    "cost": p.get("cost"), "ticker": p.get("ticker")})
+    edges = {r["ticker"]: (_num(r.get("floor")), _num(r.get("cap"))) for r in _rows(d / "signals.csv")}
+    for e in out:
+        if e["lo"] is None and e["hi"] is None:
+            e["lo"], e["hi"] = edges.get(e.pop("ticker"), (None, None))
+        else:
+            e.pop("ticker", None)
+    return out
 
 
 def fastpush_range_events(d: Path | None) -> list:
@@ -536,6 +562,7 @@ class Dashboard:
         bd = _rows(L["breakdown"] / "signals.csv")
         fp = _rows(L["fastpush"] / "signals.csv")
         fpr = L.get("fastpush_range") or Path("/nonexistent")
+        fav = L.get("favorite") or Path("/nonexistent")
         hour_close = (int(time.time()) // 3600 + 1) * 3600
         return {
             "now": time.time(), "prices": pts, "error": self.err, "hour_close": hour_close,
@@ -546,11 +573,13 @@ class Dashboard:
             "pnl": sorted(pnl_points(_rows(L["range"] / "trades.csv"), "Range")
                           + pnl_points(_rows(L["breakdown"] / "trades.csv"), "Breakdown")
                           + pnl_points(_rows(L["fastpush"] / "trades.csv"), "Fast push")
-                          + pnl_points(_rows(fpr / "trades.csv"), "FP range"),
+                          + pnl_points(_rows(fpr / "trades.csv"), "FP range")
+                          + pnl_points(_rows(fav / "trades.csv"), "Favorite"),
                           key=lambda r: r["time_utc"]),
             "breakdown": settled_summary(_rows(L["breakdown"] / "trades.csv")),
             "fastpush": settled_summary(_rows(L["fastpush"] / "trades.csv")),
             "fastpush_range": settled_summary(_rows(fpr / "trades.csv")),
+            "favorite": settled_summary(_rows(fav / "trades.csv")),
         }
 
 
@@ -662,9 +691,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--raw:#b9bec5;--buyzone:#14632f;--fp:#8e44ad;--fpr:#d35400;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--raw:#b9bec5;--buyzone:#14632f;--fp:#8e44ad;--fpr:#d35400;--fav:#0e8a9e;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--raw:#555c65;--buyzone:#3fbf6a;--fp:#c08be0;--fpr:#f39c5a;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--raw:#555c65;--buyzone:#3fbf6a;--fp:#c08be0;--fpr:#f39c5a;--fav:#4fc3d6;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
@@ -703,7 +732,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <div class="card">
 <div class="key r5only" style="display:none"><span>trade bands: light shade = <b>won</b>, dark shade = <b>lost</b>, dashed outline = open; color = account (1 blue · 2 orange · 3 green · 4 gold · 5 purple)</span></div>
 <div class="key"><span class="nor5"><i style="background:var(--no);opacity:.35"></i>range NO band</span><span class="nor5"><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
-<span class="nor5">band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span class="nor5">markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot · ◆ Fast-push range bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
+<span class="nor5">band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span class="nor5">markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot · ◆ Fast-push range bot · ▼ Favorite bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
 <span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><b style="color:var(--sup)">╌</b> rising support / <b style="color:var(--res)">╌</b> falling resistance trend lines (5-min swings), × = break</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin: 60-second BRTI average (black, what Kalshi settles on), BRTI each second (light gray), and every trade</div><canvas id="c"></canvas>
@@ -729,6 +758,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <div class="card"><div class="mut">Breakdown bot, settled</div><div class="big" id="sb"></div></div>
 <div class="card"><div class="mut">Fast-push bot, settled</div><div class="big" id="sf"></div></div>
 <div class="card"><div class="mut">Fast-push range bot, settled</div><div class="big" id="sfr"></div></div>
+<div class="card"><div class="mut">Favorite bot, settled</div><div class="big" id="sfv"></div></div>
 </div>
 <p class="mut">BRTI is the index Kalshi settles on; settlement is its average over the last 60 seconds. Paper trades only. Updates every 2 seconds.</p>
 </div></div>
@@ -837,7 +867,7 @@ function draw(){
  $('clock').textContent=`${last?hms(last[0]):''} ET · 15-min closes ${hm(D.session&&D.session.close_ts||0)} · hour closes ${hm(D.hour_close)}`;
  $('zinfo').textContent=`${Math.round(sc.clientWidth/pps()/3600*10)/10} hours on screen`;
  {const [a]=range();const d=new Date(a*1000);$('slL').textContent=fDay.format(d)+' '+hm(a)}
- sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);sum('sfr',D.fastpush_range||{trades:0,wins:0,pnl:0});
+ sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);sum('sfr',D.fastpush_range||{trades:0,wins:0,pnl:0});sum('sfv',D.favorite||{trades:0,wins:0,pnl:0});
  const [T0,T1]=range(),fits=(T1-T0)*pps()+90<=sc.clientWidth;
  // when the whole history fits on screen, keep "now" at the right edge (blank before the history starts, not after now)
  const tL=fits?T1+90/pps()-sc.clientWidth/pps():T0+sc.scrollLeft/pps(),tR=tL+sc.clientWidth/pps();
@@ -928,9 +958,9 @@ function draw(){
  const full=ZOOMS[zi]>=128,short0=ZOOMS[zi]>=32;
  for(const r of rng){const y=at(r.t)??(r.lo+r.hi)/2;const x=X(r.t),yd=Y(y),col=R5?acol(r,'dark'):css(st[r.status]),mid=Y((r.lo+r.hi)/2),short=short0&&x>=L&&x<=w-R;
   const res=r.status==='open'?'OPEN':r.status.toUpperCase()+' '+money(r.pnl),ac=R5?`#${r.acct} `:'';
-  const fpr=r.bot==='FP range',md=fpr?`, push ${r.level||''}`:`, model ${r.model?(r.model*100).toFixed(1):'?'}¢`;
-  const texts=[`${ac}${hm(r.t)} ${fpr?'FP range ':''}${r.side} ${usd(r.lo)}–${usd(r.hi+0.01)} x${r.n} @${Math.round(r.price*100)}¢${md} → ${res}`,
-   `${ac}${hm(r.t)} ${fpr?'FP range ':''}${r.side} x${r.n} @${Math.round(r.price*100)}¢${md} → ${res}`,`${ac}${fpr?'FPR ':''}${r.side} @${Math.round(r.price*100)}¢ ${res}`];
+  const fpr=r.bot==='FP range',bn=r.bot&&r.bot!=='Range'?r.bot+' ':'',md=fpr?`, push ${r.level||''}`:r.model!=null?`, model ${(r.model*100).toFixed(1)}¢`:'';
+  const texts=[`${ac}${hm(r.t)} ${bn}${r.side} ${usd(r.lo)}–${usd(r.hi+0.01)} x${r.n} @${Math.round(r.price*100)}¢${md} → ${res}`,
+   `${ac}${hm(r.t)} ${bn}${r.side} x${r.n} @${Math.round(r.price*100)}¢${md} → ${res}`,`${ac}${bn}${r.side} @${Math.round(r.price*100)}¢ ${res}`];
   if(!full)texts.splice(0,2);
   if(short){const [lx,ly,tw]=boxLabel(x,texts,col,X(r.close-3600),X(r.close),Y(r.hi),Y(r.lo));const ex=lx>x?lx:(lx+tw<x?lx+tw:x);
    g.strokeStyle=col;g.lineWidth=1.2;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yd);g.lineTo(x,ly);g.lineTo(ex,ly);g.stroke()}
@@ -969,8 +999,9 @@ function marker(g,bot,x,y,col){g.fillStyle=col;g.strokeStyle=css('--card');g.lin
  if(bot==='Breakdown'){g.moveTo(x,y-7);g.lineTo(x-6.5,y+5);g.lineTo(x+6.5,y+5);g.closePath()}
  else if(bot==='Fast push'){g.rect(x-5,y-5,10,10)}
  else if(bot==='FP range'){g.moveTo(x,y-7);g.lineTo(x+7,y);g.lineTo(x,y+7);g.lineTo(x-7,y);g.closePath()}
+ else if(bot==='Favorite'){g.moveTo(x,y+7);g.lineTo(x-6.5,y-5);g.lineTo(x+6.5,y-5);g.closePath()}
  else g.arc(x,y,5,0,7);g.fill();g.stroke()}
-const BOTS=[['Total','--line'],['Range','--yes'],['Breakdown','--no'],['Fast push','--fp'],['FP range','--fpr']];
+const BOTS=[['Total','--line'],['Range','--yes'],['Breakdown','--no'],['Fast push','--fp'],['FP range','--fpr'],['Favorite','--fav']];
 function plchart(tL,tR){
  const [g,w]=setup($('pl'),240),h=240,L=66,R=GUT,T=8,B=22;
  const X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
@@ -1031,14 +1062,14 @@ function trades(){if(!H)return;const sig=JSON.stringify([H.range,H.buys]);if(sig
  for(const b of H.buys||[])R.push({t:b.t,bot:b.bot,mkt:`15-min ${hm(Math.floor(b.t/900)*900+900)} · ${b.level||''}`,
   side:b.side,n:b.n,price:b.price!=null?b.price:b.ask,model:null,status:b.status,pnl:b.pnl,cost:b.cost});
  R.sort((a,b)=>a.t-b.t);
- let cum=0,spent=0,nset=0,wins=0,sp=0,sm=0,nm=0;const W={};const z=()=>({w:0,l:0,o:0,p:0,s:0,sp:0,sm:0,nm:0});for(const k of ['Range','Breakdown','Fast push','FP range'])W[k]=z();
+ let cum=0,spent=0,nset=0,wins=0,sp=0,sm=0,nm=0;const W={};const z=()=>({w:0,l:0,o:0,p:0,s:0,sp:0,sm:0,nm:0});for(const k of ['Range','Breakdown','Fast push','FP range','Favorite'])W[k]=z();
  for(const r of R){const w=W[r.bot]||(W[r.bot]=z());
   if(r.cost!=null){spent+=r.cost;w.s+=r.cost}r.spent=r.cost!=null?spent:null;
   if(r.status==='open'){w.o++;r.cum=null;continue}nset++;
   r.status==='won'?(w.w++,wins++):w.l++;w.p+=r.pnl||0;cum+=r.pnl||0;r.cum=cum;r.avg=cum/nset;
   if(r.price!=null){sp+=r.price;w.sp+=r.price}if(r.model!=null){sm+=r.model;nm++;w.sm+=r.model;w.nm++}
   r.aprice=sp/nset;r.amodel=nm?sm/nm:null;r.awin=wins/nset}
- const mk=r=>r.bot==='Range'?'●':r.bot==='Breakdown'?'▲':r.bot==='FP range'?'◆':'■';
+ const mk=r=>r.bot==='Range'?'●':r.bot==='Breakdown'?'▲':r.bot==='FP range'?'◆':r.bot==='Favorite'?'▼':'■';
  $('wl').innerHTML=Object.entries(W).map(([k,v])=>{const n=v.w+v.l;
   return `<span><b>${k}</b>: <span style="color:var(--win)">${v.w} won</span> / <span style="color:var(--lose)">${v.l} lost</span>${n?' ('+Math.round(v.w/n*100)+'% win)':''}${v.o?' · '+v.o+' open':''} · ${money(v.p)}${n?' · avg '+money(v.p/n)+'/trade · avg price '+cents(v.sp/n)+(v.nm?' · avg model '+cents(v.sm/v.nm):''):''} · spent $${v.s.toFixed(2)}</span>`}).join('');
  $('tinfo').textContent=`${R.length} trades · total ${money(cum)} settled · avg ${nset?money(cum/nset):'–'} per trade · $${spent.toFixed(2)} spent · newest first`;
