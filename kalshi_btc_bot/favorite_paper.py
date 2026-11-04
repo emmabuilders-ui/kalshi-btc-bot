@@ -8,7 +8,9 @@ about +2.5c per contract after the taker fee. No model is involved.
 The rule, checked at each minute mark with 3, 2 and 1 minutes left before the hourly close:
 * look at the 14 bands nearest BRTI (same ladder the range bot watches);
 * for each band not already held: if the YES ask is 75c to 84c, buy YES, walking the book up to 84c,
-  20 contracts, held to settlement. One position per band per hour, first qualifying minute wins.
+  20 contracts, held to settlement. One position per band per hour, first qualifying minute wins;
+* added 2026-11-04 (Michael: "do it"): skip the band when its YES bid-ask spread is 3c or more. The loser
+  study found the 3-5c-spread half of these trades made nothing in both periods (keep half: +5.7c / +5.3c).
 
 Backtest caveats: it used the 1-minute candle's closing ask, so a fill at that price is assumed; the
 range books are thin, and the edge is 2-3c, so fills decide everything. Own logs
@@ -21,7 +23,8 @@ import json
 import os
 
 from .late_breakdown import kalshi_fee, log
-from .range_paper import CONTRACTS, N_BANDS, RangePaper, _f, _iso, band_mid, event_ticker, fill
+from .range_paper import (CONTRACTS, MAX_SPREAD_LOW, N_BANDS, RangePaper, _f, _iso, band_mid, event_ticker, fill,
+                          spread_ok)
 
 LOW, HIGH = 0.75, 0.84      # YES ask window, inclusive, to the cent
 MINUTES = 3                 # start checking with this many minutes left (then 2, then 1)
@@ -55,9 +58,16 @@ class FavoritePaper(RangePaper):
             tk = m["ticker"]
             if tk in self.held:
                 continue
-            ya = _f(m.get("yes_ask_dollars"))
-            if favorite_ok(ya):
-                self.enter(t, close, left, m, ya, price)
+            ya, yb = _f(m.get("yes_ask_dollars")), _f(m.get("yes_bid_dollars"))
+            if not favorite_ok(ya):
+                continue
+            if not spread_ok(ya, yb):
+                log.info("%s YES %s: ask %.2f in window but spread %s is over %dc, skipped", _iso(t), tk, ya,
+                         f"{round((ya - yb) * 100)}c" if yb is not None else "unknown", round(MAX_SPREAD_LOW * 100))
+                self._append("skipped.csv", {"time_utc": _iso(t), "ticker": tk, "side": "YES", "mins_left": left,
+                                             "ask_snapshot": ya, "bid_snapshot": yb})
+                continue
+            self.enter(t, close, left, m, ya, price)
 
     def enter(self, t, close, left, m, ask, price):   # noqa: D102 (simpler signature than the range bot's)
         tk = m["ticker"]
