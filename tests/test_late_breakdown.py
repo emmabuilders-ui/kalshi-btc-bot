@@ -115,3 +115,25 @@ def test_run_records_crash_in_log(tmp_path):
         bot.run(1)
     log = (tmp_path / "crash.log").read_text()
     assert ": start" in log and "crashed:" in log and "RuntimeError: feed died" in log
+
+
+def test_open_trade_survives_restart(tmp_path):
+    from kalshi_btc_bot.late_breakdown import LateBreakdownPaper
+
+    bot = LateBreakdownPaper(tmp_path)
+    bot.unsettled.append({"time_utc": "x", "ticker": "T9", "side": "NO", "level": "hard", "secs_left": 120,
+                          "contracts": 22, "avg_price": 0.9, "fee": 0.14, "cost": 19.94, "close_ts": 100,
+                          "result": "", "won": "", "pnl": ""})
+    bot._save_open()
+
+    class FakeKalshi:
+        key = None
+        def result(self, ticker):
+            return "no"
+
+    again = LateBreakdownPaper(tmp_path)  # restarted process
+    again.k = FakeKalshi()
+    assert len(again.unsettled) == 1
+    again.settle(1000)
+    assert again.unsettled == [] and ",no,1," in (tmp_path / "trades.csv").read_text()
+    assert LateBreakdownPaper(tmp_path).unsettled == []

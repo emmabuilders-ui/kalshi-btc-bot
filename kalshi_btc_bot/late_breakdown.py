@@ -359,6 +359,12 @@ class LateBreakdownPaper:
         self._last_settle = 0
         self._price_fh = None
         self._price_day = None
+        self._open_file = self.out / "open_trades.json"
+        if self._open_file.exists():  # paper trades bought before a restart still get settled
+            self.unsettled = json.loads(self._open_file.read_text())
+
+    def _save_open(self):
+        self._open_file.write_text(json.dumps(self.unsettled, indent=1))
 
     # ---------------------------------------------------------------- logging helpers
     def _append(self, name: str, row: dict):
@@ -541,6 +547,7 @@ class LateBreakdownPaper:
                  "secs_left": left, "contracts": n, "avg_price": round(avg, 4), "fee": fee,
                  "cost": round(n * avg + fee, 2), "close_ts": s.close_ts, "result": "", "won": "", "pnl": ""}
         self.unsettled.append(trade)
+        self._save_open()
         log.info("PAPER BUY %d %s %s @ %.2f (fee %.2f)", n, side.upper(), s.ticker, avg, fee)
 
     def settle(self, now: int):
@@ -562,6 +569,7 @@ class LateBreakdownPaper:
                       pnl=round(tr["contracts"] * (won - tr["avg_price"]) - tr["fee"], 2))
             self._append("trades.csv", {k: v for k, v in tr.items() if k != "close_ts"})
             self.unsettled.remove(tr)
+            self._save_open()
             log.info("SETTLED %s %s pnl %.2f", tr["ticker"], res, tr["pnl"])
         self._status(now)
 
