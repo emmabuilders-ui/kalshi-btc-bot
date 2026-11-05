@@ -785,3 +785,14 @@ time_utc,ticker,side,level,level_price,secs_left,price,strike,stack,proxy_bias,a
 2026-11-05 19:01:15,KXBTC15M-26NOV051415-15,YES,hard_top,76006.16,825,76017.77,75987.05,mixed,4.4,,,,skip: outside 1-2 min window
 2026-11-05 19:04:25,KXBTC15M-26NOV051415-15,NO,hard,75918.07,635,75895.7,75987.05,mixed,3.31,,,,skip: outside 1-2 min window
 2026-11-05 19:04:30,KXBTC15M-26NOV051415-15,NO,15min,75879.14,630,75881.98,75987.05,mixed,3.31,,,,skip: outside 1-2 min window
+2026-11-05 19:15:05,KXBTC15M-26NOV051430-30,YES,hard_top,76136.61,895,76168.56,76051.55,mixed,1.87,,,,skip: outside 1-2 min window
+2026-11-05 19:20:55,KXBTC15M-26NOV051430-30,NO,hard,76043.19,545,76039.93,76051.55,mixed,1.25,,,,skip: outside 1-2 min window
+2026-11-05 19:30:10,KXBTC15M-26NOV051445-45,NO,15min,75887.3,890,75887.26,75919.59,mixed,-0.03,,,,skip: outside 1-2 min window
+2026-11-05 19:31:10,KXBTC15M-26NOV051445-45,NO,hard,75879.15,830,75874.19,75919.59,mixed,-0.03,,,,skip: outside 1-2 min window
+2026-11-05 19:31:45,KXBTC15M-26NOV051445-45,YES,hard_top,75918.49,795,75926.43,75919.59,mixed,-0.03,,,,skip: outside 1-2 min window
+2026-11-05 19:43:35,KXBTC15M-26NOV051445-45,YES,15min_high,76288.42,85,76311.93,75919.59,mixed,0.69,,,,skip: empty book
+2026-11-05 19:45:05,KXBTC15M-26NOV051500-00,YES,hard_top,76290.8,895,76303.67,76263.33,mixed,0.83,,,,skip: outside 1-2 min window
+2026-11-05 19:46:50,KXBTC15M-26NOV051500-00,YES,15min_high,76346.51,790,76348.92,76263.33,mixed,0.65,,,,skip: outside 1-2 min window
+2026-11-05 19:56:05,KXBTC15M-26NOV051500-00,NO,hard,76224.77,235,76221.02,76263.33,mixed,0.91,0.69,1536.22,"[[0.31, 1536.22], [0.3, 4623.81], [0.29, 2478.35], [0.28, 4216.62], [0.27, 4866.94], [0.26, 1741.01], [0.25, 4290.84], [0.24, 1796.04]]",skip: outside 1-2 min window
+2026-11-05 20:00:05,KXBTC15M-26NOV051515-15,NO,15min,76198.07,895,76179.24,76237.53,mixed,1.18,,,,skip: outside 1-2 min window
+2026-11-05 20:01:00,KXBTC15M-26NOV051515-15,NO,hard,76175.05,840,76173.71,76237.53,mixed,1.18,,,,skip: outside 1-2 min window
