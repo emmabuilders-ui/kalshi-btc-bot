@@ -1,0 +1,2 @@
+time_utc,ticker,side,mins_left,floor,cap,brti,move,cushion,move_share,ask_snapshot,book_best,limit,filled,avg_price,book
+2026-11-05 12:59:00,KXBTC-26NOV0508-B79550,YES,1,79500,79599.99,79551.98,2.86,48.02,0.06,0.95,0.96,0.95,0,,"[[0.04, 115.6], [0.01, 0.01]]"
