@@ -1,0 +1,2 @@
+time_utc,ticker,side,floor,cap,level,secs_left,push,lag_s,contracts,avg_price,fee,cost,result,won,pnl
+2026-11-05 00:57:03,KXBTC-26NOV0420-B80450,YES,80400.0,80499.99,prev15_low,177,3.93,0.8,20,0.46,0.35,9.55,yes,1,10.45
