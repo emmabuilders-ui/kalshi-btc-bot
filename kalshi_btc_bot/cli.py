@@ -94,6 +94,19 @@ def main(argv=None) -> None:
     qp.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     qp.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    sq = sub.add_parser("paper-squeeze", help="paper trade squeeze breaks on the 15-min markets, taking the ask (no orders are sent)")
+    sq.add_argument("--out", default="runs/squeeze")
+    sq.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
+    sq.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    sq.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
+    sm = sub.add_parser("paper-squeeze-maker", help="paper trade squeeze breaks on the 15-min markets with a resting limit bid (no orders are sent)")
+    sm.add_argument("--out", default="runs/squeeze-maker")
+    sm.add_argument("--contracts", type=int, default=20, help="contracts per paper bid")
+    sm.add_argument("--maker-fee", type=float, default=0.0175, help="maker fee rate (fee = rate x C x P x (1-P)); 0 if the market has none")
+    sm.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    sm.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     d = sub.add_parser("dashboard", help="serve a live chart of the paper bots (read-only)")
     d.add_argument("--port", type=int, default=8080)
     d.add_argument("--token-file", default="/etc/kalshi-bot/dash_token", help="file holding the secret page path")
@@ -107,6 +120,8 @@ def main(argv=None) -> None:
     d.add_argument("--trend-tight", default="/opt/kalshi-logs-trend-tight/trend-tight")
     d.add_argument("--maker", default="/opt/kalshi-logs-maker/maker")
     d.add_argument("--quiet", default="/opt/kalshi-logs-quiet/quiet")
+    d.add_argument("--squeeze", default="/opt/kalshi-logs-squeeze/squeeze")
+    d.add_argument("--squeeze-maker", default="/opt/kalshi-logs-squeeze-maker/squeeze-maker")
 
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
@@ -175,13 +190,20 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-quiet":
         from .quiet_paper import from_env as quiet_env
         quiet_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-squeeze":
+        from .squeeze_paper import from_env as sq_env
+        sq_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-squeeze-maker":
+        from .squeeze_paper import maker_from_env as sqm_env
+        sqm_env(a.out, a.push_logs, a.contracts, a.maker_fee).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "dashboard":
         from pathlib import Path
         from .dashboard import serve
         serve(a.port, Path(a.token_file).read_text().strip(),
               {"breakdown": Path(a.breakdown), "range": Path(a.range), "fastpush": Path(a.fastpush),
                "range5": Path(a.range5), "fastpush_range": Path(a.fastpush_range), "favorite": Path(a.favorite),
-               "trend_broad": Path(a.trend_broad), "trend_tight": Path(a.trend_tight), "maker": Path(a.maker), "quiet": Path(a.quiet)})
+               "trend_broad": Path(a.trend_broad), "trend_tight": Path(a.trend_tight), "maker": Path(a.maker), "quiet": Path(a.quiet),
+               "squeeze": Path(a.squeeze), "squeeze_maker": Path(a.squeeze_maker)})
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)
