@@ -81,6 +81,13 @@ def main(argv=None) -> None:
     tp.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     tp.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    mp = sub.add_parser("paper-maker", help="paper trade the tight trend-in signal with a resting limit bid instead of taking the ask (no orders are sent)")
+    mp.add_argument("--out", default="runs/maker")
+    mp.add_argument("--contracts", type=int, default=20, help="contracts per paper bid")
+    mp.add_argument("--maker-fee", type=float, default=0.0175, help="maker fee rate (fee = rate x C x P x (1-P)); 0 if the market has none")
+    mp.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    mp.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     d = sub.add_parser("dashboard", help="serve a live chart of the paper bots (read-only)")
     d.add_argument("--port", type=int, default=8080)
     d.add_argument("--token-file", default="/etc/kalshi-bot/dash_token", help="file holding the secret page path")
@@ -92,6 +99,7 @@ def main(argv=None) -> None:
     d.add_argument("--favorite", default="/opt/kalshi-logs-favorite/favorite")
     d.add_argument("--trend-broad", default="/opt/kalshi-logs-trend-broad/trend-broad")
     d.add_argument("--trend-tight", default="/opt/kalshi-logs-trend-tight/trend-tight")
+    d.add_argument("--maker", default="/opt/kalshi-logs-maker/maker")
 
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
@@ -154,13 +162,16 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-trend":
         from .trend_paper import from_env as trend_env
         trend_env(a.out, a.push_logs, a.contracts, a.rule).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-maker":
+        from .maker_paper import from_env as maker_env
+        maker_env(a.out, a.push_logs, a.contracts, a.maker_fee).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "dashboard":
         from pathlib import Path
         from .dashboard import serve
         serve(a.port, Path(a.token_file).read_text().strip(),
               {"breakdown": Path(a.breakdown), "range": Path(a.range), "fastpush": Path(a.fastpush),
                "range5": Path(a.range5), "fastpush_range": Path(a.fastpush_range), "favorite": Path(a.favorite),
-               "trend_broad": Path(a.trend_broad), "trend_tight": Path(a.trend_tight)})
+               "trend_broad": Path(a.trend_broad), "trend_tight": Path(a.trend_tight), "maker": Path(a.maker)})
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)
