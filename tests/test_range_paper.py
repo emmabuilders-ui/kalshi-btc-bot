@@ -34,3 +34,50 @@ def test_model_is_a_probability_and_sensible():
     assert m.p_inside(80050, 80000, 80099.99, 25, s100, vb) < mid  # more time, less sure
     total = sum(m.p_inside(80050, lo, lo + 99.99, 10, s100, vb) for lo in range(78000, 82000, 100))
     assert abs(total - 1) < 0.02
+
+
+def test_spread_filter_only_below_90c():
+    from kalshi_btc_bot.range_paper import spread_ok
+    assert spread_ok(0.80, 0.78) and spread_ok(0.80, 0.79) and spread_ok(0.80, 0.8)
+    assert not spread_ok(0.80, 0.77) and not spread_ok(0.80, 0.75) and not spread_ok(0.80, None)
+    assert spread_ok(0.90, 0.85) and spread_ok(0.95, None)        # 90c+ is not filtered
+    assert not spread_ok(None, 0.5)
+
+
+def test_check_skips_wide_spread_below_90c_only(tmp_path):
+    import json
+
+    from kalshi_btc_bot.range_paper import RangePaper
+
+    class FakeKalshi:
+        key = True
+
+        def __init__(self, markets, books):
+            self.markets, self.books, self.calls = markets, books, []
+
+        def get(self, path, **kw):
+            return {"markets": self.markets}
+
+        def orderbook(self, tk):
+            self.calls.append(tk)
+            return self.books[tk]
+
+    bot = RangePaper(tmp_path, None, None)
+    close = 1793563200
+    t = close - 2 * 60
+    bot.price_at = lambda u: 80050.0
+    bot.minute_closes = lambda u: 80050 * np.exp(np.cumsum(np.r_[0, np.random.default_rng(1).normal(0, 0.0001, 100)]))
+    # band B: the in-band YES is near certain with 2 min left; its ask is set so each case lands where we want
+    def band(tk, lo, hi, bid, ask):
+        return {"ticker": tk, "status": "active", "floor_strike": lo, "cap_strike": hi, "strike_type": "between",
+                "yes_bid_dollars": bid, "yes_ask_dollars": ask}
+    tight = band("T", 80000, 80099.99, 0.78, 0.80)      # 75-89c, spread 2c: trades
+    wide = band("W", 80000, 80099.99, 0.75, 0.80)       # 75-89c, spread 5c: skipped
+    high = band("H", 80000, 80099.99, 0.85, 0.90)       # 90c+, spread 5c: still trades
+    books = {tk: {"no_bids": [[0.20, 500]], "yes_bids": [[0.78, 500]]} for tk in "TWH"}
+    bot.k = FakeKalshi([tight, wide, high], books)
+    bot.check(t)
+    assert sorted(bot.held) == ["H", "T"] and "W" not in bot.k.calls
+    skipped = (tmp_path / "skipped.csv").read_text().splitlines()
+    assert len(skipped) == 2 and skipped[1].startswith("2026-11-01 19:58:00,W,YES,2,0.8,0.75,")
+    assert json.loads((tmp_path / "open_positions.json").read_text())[0]["ticker"] in ("T", "H")

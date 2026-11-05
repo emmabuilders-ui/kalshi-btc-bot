@@ -24,8 +24,13 @@ class FakeKalshi:
         return self.res
 
 
-def _mk(tk, lo, hi, ask):
-    return {"ticker": tk, "status": "active", "floor_strike": lo, "cap_strike": hi, "yes_ask_dollars": ask}
+def _mk(tk, lo, hi, ask, bid="tight"):
+    m = {"ticker": tk, "status": "active", "floor_strike": lo, "cap_strike": hi, "yes_ask_dollars": ask}
+    if bid == "tight":
+        bid = round(ask - 0.02, 2)      # 2c spread unless the test says otherwise
+    if bid is not None:
+        m["yes_bid_dollars"] = bid
+    return m
 
 
 def _bot(tmp_path, markets, books):
@@ -88,3 +93,15 @@ def test_dashboard_favorite_events(tmp_path):
     h = history_events({"range": tmp_path / "range", "breakdown": tmp_path / "breakdown",
                         "fastpush": tmp_path / "fastpush", "favorite": d})
     assert [e["bot"] for e in h["range"]] == ["Favorite", "Favorite"]
+
+
+def test_skips_wide_spread(tmp_path):
+    markets = [_mk("A", 975, 999.99, 0.80, bid=0.77),    # 3c spread: skipped
+               _mk("B", 1000, 1024.99, 0.80, bid=0.78),  # 2c spread: trades
+               _mk("C", 1025, 1049.99, 0.80, bid=None)]  # no bid quoted: skipped
+    books = {tk: {"no_bids": [[0.20, 100.0]]} for tk in "ABC"}
+    bot, close = _bot(tmp_path, markets, books)
+    bot.check(close - 180)
+    assert list(bot.held) == ["B"] and bot.k.calls == ["B"]
+    rows = (tmp_path / "skipped.csv").read_text().splitlines()
+    assert len(rows) == 3 and rows[1].endswith(",A,YES,3,0.8,0.77") and rows[2].endswith(",C,YES,3,0.8,")
