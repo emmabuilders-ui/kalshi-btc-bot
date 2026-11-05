@@ -73,6 +73,29 @@ def settled_summary(rows: list[dict]) -> dict:
     return {"trades": len(pnl), "wins": won, "pnl": round(sum(pnl), 2)}
 
 
+def perf_row(bot: str, rows: list[dict]) -> dict:
+    """Settled trades of one bot, each trade counted once: win %, average price paid, win % minus price,
+    break-even (price plus fee, per contract) and EV (profit per contract after fees)."""
+    n = wins = 0
+    price = be = ev = pnl = 0.0
+    for r in rows:
+        x, p, c = _num(r.get("pnl")), _num(r.get("avg_price")), _num(r.get("contracts"))
+        if x is None or p is None or not c:
+            continue
+        n += 1
+        wins += str(r.get("won")) == "1"
+        price += p
+        be += (_num(r.get("cost")) or c * p) / c
+        ev += x / c
+        pnl += x
+    if not n:
+        return {"bot": bot, "trades": 0}
+    win, avg = wins / n * 100, price / n * 100
+    return {"bot": bot, "trades": n, "wins": wins, "win_pct": round(win, 1), "avg_price": round(avg, 1),
+            "gap": round(win - avg, 1), "break_even": round(be / n * 100, 1), "ev": round(ev / n * 100, 1),
+            "pnl": round(pnl, 2)}
+
+
 def pnl_points(rows: list[dict], bot: str) -> list[dict]:
     """Settled trades as (time, bot, pnl) points for the cumulative P/L chart."""
     out = []
@@ -637,7 +660,20 @@ class Dashboard:
             "trend_tight": settled_summary(_rows(tt / "trades.csv")),
             "maker": settled_summary(_rows(mkr / "trades.csv")),
             "quiet": settled_summary(_rows(qt / "trades.csv")),
+            "perf": self.perf(),
         }
+
+    def perf(self) -> list[dict]:
+        L, none = self.logs, Path("/nonexistent")
+        out = [perf_row(name, _rows((L.get(key) or none) / "trades.csv")) for name, key in (
+            ("Range", "range"), ("Breakdown", "breakdown"), ("Fast push", "fastpush"),
+            ("Fast-push range", "fastpush_range"), ("Favorite", "favorite"), ("Trend broad", "trend_broad"),
+            ("Trend tight", "trend_tight"), ("Maker (limit order)", "maker"), ("Quiet favorite", "quiet"))]
+        if L.get("range5"):
+            r5 = _rows(L["range5"] / "trades.csv")
+            for a in range(1, 6):
+                out.append(perf_row(f"5-account range, acct {a}", [r for r in r5 if str(r.get("account")) == str(a)]))
+        return out
 
 
 def range5_events(d: Path) -> list:
@@ -801,6 +837,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <div class="mut" style="font-size:12px;margin-top:2px">Drag the slider (or scroll sideways) to move through the full history. Both graphs move together.</div>
 </div>
 <div class="nor5">
+<div class="card scroll" style="margin-top:12px"><b>Performance by bot</b> <span class="mut">settled trades only · win % minus price is the edge; EV is profit per contract after fees</span><table id="perf"></table></div>
 <div class="card" style="margin-top:12px"><b>All trades</b> <span class="mut" id="tinfo"></span>
 <div class="key" id="wl" style="margin:6px 0 8px;font-size:13px;color:var(--fg)"></div>
 <div class="tscroll"><table id="trades"></table></div></div>
@@ -843,6 +880,10 @@ const fH=new Intl.DateTimeFormat('en-US',{timeZone:TZ,hour:'numeric',minute:'num
 const hm=t=>fHM.format(new Date(t*1000)).replace(' AM','a').replace(' PM','p');
 const hms=t=>fHMS.format(new Date(t*1000));
 const etMidnight=t=>{const [h,m]=fH.format(new Date(t*1000)).split(':').map(Number);return (h%24)===0&&m===0};
+function perfTable(){const R=D.perf||[];const c=v=>v==null?'–':(v>=0?'+':'')+v.toFixed(1);
+ $('perf').innerHTML='<tr><th>Bot</th><th>Trades</th><th>Won</th><th>Win %</th><th>Avg price</th><th>Win % − price</th><th>Break-even %</th><th>EV per contract</th><th>Total P/L</th></tr>'+
+ R.map(r=>r.trades?`<tr><td>${r.bot}</td><td>${r.trades}</td><td>${r.wins}</td><td>${r.win_pct.toFixed(1)}%</td><td>${r.avg_price.toFixed(1)}¢</td><td style="color:var(${r.gap>=0?'--win':'--lose'})">${c(r.gap)} pts</td><td>${r.break_even==null?'–':r.break_even.toFixed(1)+'%'}</td><td style="color:var(${(r.ev||0)>=0?'--win':'--lose'})">${c(r.ev)}¢</td><td style="color:var(${r.pnl>=0?'--win':'--lose'})">${money(r.pnl)}</td></tr>`
+  :`<tr><td>${r.bot}</td><td colspan="8" class="mut">no settled trades yet</td></tr>`).join('')}
 const money=x=>(x<0?'-$':'+$')+Math.abs(x).toFixed(2);
 const usd=x=>'$'+x.toLocaleString('en-US',{maximumFractionDigits:0});
 const tsOf=s=>Date.parse(s.replace(' ','T')+'Z')/1000;
@@ -928,6 +969,7 @@ function draw(){
  $('clock').textContent=`${last?hms(last[0]):''} ET · 15-min closes ${hm(D.session&&D.session.close_ts||0)} · hour closes ${hm(D.hour_close)}`;
  $('zinfo').textContent=`${Math.round(sc.clientWidth/pps()/3600*10)/10} hours on screen`;
  {const [a]=range();const d=new Date(a*1000);$('slL').textContent=fDay.format(d)+' '+hm(a)}
+ perfTable();
  sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);sum('sfr',D.fastpush_range||{trades:0,wins:0,pnl:0});sum('sfv',D.favorite||{trades:0,wins:0,pnl:0});sum('stb',D.trend_broad||{trades:0,wins:0,pnl:0});sum('stt',D.trend_tight||{trades:0,wins:0,pnl:0});sum('smk',D.maker||{trades:0,wins:0,pnl:0});sum('sqt',D.quiet||{trades:0,wins:0,pnl:0});
  const [T0,T1]=range(),fits=(T1-T0)*pps()+90<=sc.clientWidth;
  // when the whole history fits on screen, keep "now" at the right edge (blank before the history starts, not after now)
