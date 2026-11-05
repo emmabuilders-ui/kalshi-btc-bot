@@ -107,16 +107,22 @@ def read_price_hour(path: Path, res: int) -> list[list[float]]:
         return []
     # The file is appended to by the bot, one gzip member per run. A member cut off by a restart
     # (or still being written) is decompressed as far as it goes, then reading resumes at the next member.
+    # A cut-off member usually ends in half a line; that half is dropped, so it can't run into the first
+    # line of the next member (e.g. "1793881851" + "1793883000,79661.83,..." read as one huge time).
     text, pos = [], 0
     while pos < len(raw):
-        d = zlib.decompressobj(31)
+        d, part = zlib.decompressobj(31), []
         for k in range(pos, len(raw), 4096):  # in chunks, so a broken member still yields what came before the break
             try:
-                text.append(d.decompress(raw[k:k + 4096]))
+                part.append(d.decompress(raw[k:k + 4096]))
             except zlib.error:
                 break
             if d.eof:
                 break
+        chunk = b"".join(part)
+        if not d.eof and not chunk.endswith(b"\n"):
+            chunk = chunk[:chunk.rfind(b"\n") + 1]
+        text.append(chunk)
         if d.eof and d.unused_data:
             pos = len(raw) - len(d.unused_data)
             continue
@@ -124,14 +130,22 @@ def read_price_hour(path: Path, res: int) -> list[list[float]]:
         if d.eof or nxt < 0:
             break
         pos = nxt
+    # only times inside the file's own UTC hour (prices/YYYY-MM-DD/HH.csv.gz) are kept
+    try:
+        t0 = _hour_end(f"{path.parent.name}/{path.name[:2]}") - 3600
+        t1 = t0 + 3600
+    except ValueError:
+        t0, t1 = 1_000_000_000, 10_000_000_000
     for line in b"".join(text).decode("utf-8", "replace").splitlines():
         a = line.split(",")
         if len(a) < 2 or not a[0].isdigit() or not a[1]:
             continue
         try:
-            out[int(a[0]) // res * res] = float(a[1])
+            t, v = int(a[0]), float(a[1])
         except ValueError:
             continue
+        if t0 <= t < t1 and v > 0:
+            out[t // res * res] = v
     return [[t, out[t]] for t in sorted(out)]
 
 
@@ -839,11 +853,11 @@ function range(){const first=Math.min(P.length?P[0][0]:D.now,...(H?H.range.map(r
 function sum(id,s){$(id).textContent=s.trades?`${s.wins}/${s.trades} won, ${money(s.pnl)}`:'no trades yet'}
 // trailing 60-second average of BRTI at each price point (Kalshi settles on the average of the 60 seconds before the close)
 function avg60(tL,tR){let a=0;while(a<P.length&&P[a][0]<tL-120)a++;const out=[];let j=a,sum=0,n=0;
- for(let i=a;i<P.length&&P[i][0]<=tR+60;i++){sum+=P[i][1];n++;while(P[j][0]<=P[i][0]-60){sum-=P[j][1];n--;j++}
+ for(let i=a;i<P.length&&P[i][0]<=tR+60;i++){sum+=P[i][1];n++;while(j<i&&P[j][0]<=P[i][0]-60){sum-=P[j][1];n--;j++}
   if(P[i][0]>=tL-60)out.push([P[i][0],P[i][0]-P[j][0]>=40||i-j>=50?sum/n:null])}return out}
 function merge(pts){if(!pts.length)return;const last=P.length?P[P.length-1][0]:0;for(const p of pts)if(p[0]>last)P.push(p)}
 async function loadHistory(){try{const r=await fetch('history.json'+QS,{cache:'no-store'});H=await r.json();
- const live=P.filter(p=>p[0]>(H.prices.length?H.prices[H.prices.length-1][0]:0));P=H.prices.concat(live);layout()}catch(e){}}
+ H.prices=H.prices.filter(p=>p[0]<=Date.now()/1000+3600);const live=P.filter(p=>p[0]>(H.prices.length?H.prices[H.prices.length-1][0]:0));P=H.prices.concat(live);layout()}catch(e){}}
 let LVR=[];
 async function loadLevels(){try{const since=LVR.length?LVR[LVR.length-1][0]:0;const r=await fetch('levels.json?since='+since,{cache:'no-store'});
  const add=await r.json();if(add.length){LVR=LVR.concat(add);draw()}}catch(e){}}
