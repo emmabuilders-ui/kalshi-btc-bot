@@ -8,6 +8,8 @@
 #   kalshi-favorite  YES favorites 75-84c in the last 3 min on the hourly range bands (logs: paper-logs-favorite branch)
 #   kalshi-trend-broad  trend-in YES 61-90c, 4-20 min before the hourly close (logs: paper-logs-trend-broad branch)
 #   kalshi-trend-tight  trend-in YES 70-84c near the band centre, 4-20 min before the close (logs: paper-logs-trend-tight branch)
+#   kalshi-maker        same signal as trend-tight, but a resting limit bid instead of taking the ask (logs: paper-logs-maker branch)
+#   kalshi-quiet        quiet YES favorites 61-95c, 1-18 min before the hourly close (logs: paper-logs-quiet branch)
 #   kalshi-dash   live chart of all of them at http://<server-ip>:8080/<secret>/  (kbot chart prints the link)
 # No orders are ever sent. Run as root:  bash setup.sh
 # It asks for: a GitHub token (read/write to this repo), the Kalshi API key ID, and the
@@ -33,6 +35,10 @@ TB_LOGS=/opt/kalshi-logs-trend-broad
 TB_BRANCH="paper-logs-trend-broad"
 TT_LOGS=/opt/kalshi-logs-trend-tight
 TT_BRANCH="paper-logs-trend-tight"
+MK_LOGS=/opt/kalshi-logs-maker
+MK_BRANCH="paper-logs-maker"
+QT_LOGS=/opt/kalshi-logs-quiet
+QT_BRANCH="paper-logs-quiet"
 CONF=/etc/kalshi-bot
 USER_=kbot
 
@@ -244,6 +250,46 @@ git -C "$TT_LOGS" config user.email "kbot@localhost"
 git -C "$TT_LOGS" config push.default current
 chown -R "$USER_" "$TT_LOGS"
 sudo -u "$USER_" git -C "$TT_LOGS" push -q -u origin "$TT_BRANCH"
+echo "== Setting up the maker bot log folder (pushed to the $MK_BRANCH branch every hour)"
+if [ ! -d "$MK_LOGS/.git" ]; then
+  git init -q "$MK_LOGS"
+  git -C "$MK_LOGS" remote add origin "$URL"
+  if git -C "$MK_LOGS" fetch -q origin "$MK_BRANCH" 2>/dev/null; then
+    git -C "$MK_LOGS" checkout -q -B "$MK_BRANCH" "origin/$MK_BRANCH"
+  else
+    git -C "$MK_LOGS" checkout -q --orphan "$MK_BRANCH"
+    echo "Limit-order (maker) trend-in YES hourly range band paper-trading logs from the server. No real orders." > "$MK_LOGS/README.md"
+    git -C "$MK_LOGS" add README.md
+    git -C "$MK_LOGS" -c user.name=kbot -c user.email=kbot@localhost commit -qm "start maker paper logs"
+  fi
+else
+  git -C "$MK_LOGS" remote set-url origin "$URL"
+fi
+git -C "$MK_LOGS" config user.name "kalshi paper bot"
+git -C "$MK_LOGS" config user.email "kbot@localhost"
+git -C "$MK_LOGS" config push.default current
+chown -R "$USER_" "$MK_LOGS"
+sudo -u "$USER_" git -C "$MK_LOGS" push -q -u origin "$MK_BRANCH"
+echo "== Setting up the quiet bot log folder (pushed to the $QT_BRANCH branch every hour)"
+if [ ! -d "$QT_LOGS/.git" ]; then
+  git init -q "$QT_LOGS"
+  git -C "$QT_LOGS" remote add origin "$URL"
+  if git -C "$QT_LOGS" fetch -q origin "$QT_BRANCH" 2>/dev/null; then
+    git -C "$QT_LOGS" checkout -q -B "$QT_BRANCH" "origin/$QT_BRANCH"
+  else
+    git -C "$QT_LOGS" checkout -q --orphan "$QT_BRANCH"
+    echo "Quiet-favorite YES hourly range band paper-trading logs from the server. No real orders." > "$QT_LOGS/README.md"
+    git -C "$QT_LOGS" add README.md
+    git -C "$QT_LOGS" -c user.name=kbot -c user.email=kbot@localhost commit -qm "start quiet paper logs"
+  fi
+else
+  git -C "$QT_LOGS" remote set-url origin "$URL"
+fi
+git -C "$QT_LOGS" config user.name "kalshi paper bot"
+git -C "$QT_LOGS" config user.email "kbot@localhost"
+git -C "$QT_LOGS" config push.default current
+chown -R "$USER_" "$QT_LOGS"
+sudo -u "$USER_" git -C "$QT_LOGS" push -q -u origin "$QT_BRANCH"
 
 echo "== Installing the service"
 cat > /etc/systemd/system/kalshi-paper.service <<EOF
@@ -382,6 +428,42 @@ RestartSec=30
 [Install]
 WantedBy=multi-user.target
 EOF
+
+cat > /etc/systemd/system/kalshi-maker.service <<EOF
+[Unit]
+Description=Kalshi limit-order (maker) trend-in YES hourly range PAPER trader (no real orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=$USER_
+EnvironmentFile=$CONF/env
+WorkingDirectory=$MK_LOGS
+ExecStart=$APP/.venv/bin/python -m kalshi_btc_bot paper-maker --out $MK_LOGS/maker --push-logs
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /etc/systemd/system/kalshi-quiet.service <<EOF
+[Unit]
+Description=Kalshi quiet-favorite YES hourly range PAPER trader (no real orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=$USER_
+EnvironmentFile=$CONF/env
+WorkingDirectory=$QT_LOGS
+ExecStart=$APP/.venv/bin/python -m kalshi_btc_bot paper-quiet --out $QT_LOGS/quiet --push-logs
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
 cat > /etc/systemd/system/kalshi-dash.service <<EOF
 [Unit]
 Description=Live chart of the Kalshi PAPER traders (read-only web page)
@@ -391,7 +473,7 @@ Wants=network-online.target
 [Service]
 User=$USER_
 EnvironmentFile=$CONF/env
-ExecStart=$APP/.venv/bin/python -m kalshi_btc_bot dashboard --port 8080 --token-file $CONF/dash_token --breakdown $LOGS/breakdown --range $RANGE_LOGS/range --fastpush $FP_LOGS/fastpush --range5 $R5_LOGS/range5 --fastpush-range $FPR_LOGS/fastpush-range --favorite $FAV_LOGS/favorite --trend-broad $TB_LOGS/trend-broad --trend-tight $TT_LOGS/trend-tight
+ExecStart=$APP/.venv/bin/python -m kalshi_btc_bot dashboard --port 8080 --token-file $CONF/dash_token --breakdown $LOGS/breakdown --range $RANGE_LOGS/range --fastpush $FP_LOGS/fastpush --range5 $R5_LOGS/range5 --fastpush-range $FPR_LOGS/fastpush-range --favorite $FAV_LOGS/favorite --trend-broad $TB_LOGS/trend-broad --trend-tight $TT_LOGS/trend-tight --maker $MK_LOGS/maker --quiet $QT_LOGS/quiet
 Restart=always
 RestartSec=30
 
@@ -399,14 +481,14 @@ RestartSec=30
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable -q kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-dash
-systemctl restart kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-dash
+systemctl enable -q kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-dash
+systemctl restart kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-dash
 
 cat > /usr/local/bin/kbot <<'EOF'
 #!/usr/bin/env bash
 # kbot status | log | update | stop | start | chart | touch COIN TF BARS [TARGET]
 case "${1:-status}" in
-  status) for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-dash; do systemctl --no-pager status $u | head -3; done
+  status) for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-dash; do systemctl --no-pager status $u | head -3; done
           echo "-- 15-min breakdown bot"; cat /opt/kalshi-logs/breakdown/status.json 2>/dev/null
           echo; echo "-- hourly range bot"; cat /opt/kalshi-logs-range/range/status.json 2>/dev/null
           echo; echo "-- fast-push bot"; cat /opt/kalshi-logs-fastpush/fastpush/status.json 2>/dev/null
@@ -414,12 +496,14 @@ case "${1:-status}" in
           echo; echo "-- fast-push range bot"; cat /opt/kalshi-logs-fastpush-range/fastpush-range/status.json 2>/dev/null
           echo; echo "-- YES-favorite bot"; cat /opt/kalshi-logs-favorite/favorite/status.json 2>/dev/null
           echo; echo "-- trend broad bot"; cat /opt/kalshi-logs-trend-broad/trend-broad/status.json 2>/dev/null
-          echo; echo "-- trend tight bot"; cat /opt/kalshi-logs-trend-tight/trend-tight/status.json 2>/dev/null ;;
-  log)    for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-dash; do journalctl -u $u -n 20 --no-pager; done ;;
+          echo; echo "-- trend tight bot"; cat /opt/kalshi-logs-trend-tight/trend-tight/status.json 2>/dev/null
+          echo; echo "-- maker (limit-order) bot"; cat /opt/kalshi-logs-maker/maker/status.json 2>/dev/null
+          echo; echo "-- quiet favorite bot"; cat /opt/kalshi-logs-quiet/quiet/status.json 2>/dev/null ;;
+  log)    for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-dash; do journalctl -u $u -n 20 --no-pager; done ;;
   update) curl -fsSL -H "Authorization: token $(cat /etc/kalshi-bot/github_token)" \
             "https://raw.githubusercontent.com/emmabuilders-ui/kalshi-btc-bot/${BRANCH:-main}/deploy/setup.sh" | bash ;;
-  stop)   systemctl stop kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-dash ;;
-  start)  systemctl start kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-dash ;;
+  stop)   systemctl stop kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-dash ;;
+  start)  systemctl start kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-dash ;;
   chart)  IP=$(curl -fsS -4 https://api.ipify.org 2>/dev/null || hostname -I | cut -d' ' -f1); TOK=$(cat /etc/kalshi-bot/dash_token)
           echo "Live chart: http://$IP:8080/$TOK/"
           echo "5-account range bot chart: http://$IP:8080/$TOK/range5/" ;;
@@ -439,6 +523,8 @@ journalctl -u kalshi-fastpush-range -n 8 --no-pager || true
 journalctl -u kalshi-favorite -n 8 --no-pager || true
 journalctl -u kalshi-trend-broad -n 8 --no-pager || true
 journalctl -u kalshi-trend-tight -n 8 --no-pager || true
+journalctl -u kalshi-maker -n 8 --no-pager || true
+journalctl -u kalshi-quiet -n 8 --no-pager || true
 echo
 echo "Done. All eight paper traders and the live chart are running and restart by themselves after a reboot."
 echo "Commands:  kbot status   kbot log   kbot update   kbot chart   kbot touch BTC 1h 6 +1%"
