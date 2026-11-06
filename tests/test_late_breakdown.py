@@ -101,3 +101,39 @@ def test_step_buys_yes_on_late_breakout(tmp_path):
     assert bot.unsettled[0]["avg_price"] == 0.8 and bot.unsettled[0]["contracts"] == 25
     bot.settle(o + 1000)
     assert ",yes,1," in (tmp_path / "trades.csv").read_text().splitlines()[1]
+
+
+def test_run_records_crash_in_log(tmp_path):
+    import pytest
+    from kalshi_btc_bot.late_breakdown import LateBreakdownPaper
+
+    bot = LateBreakdownPaper(tmp_path)
+    def boom(seconds=None):
+        raise RuntimeError("feed died")
+    bot._loop = boom
+    with pytest.raises(RuntimeError):
+        bot.run(1)
+    log = (tmp_path / "crash.log").read_text()
+    assert ": start" in log and "crashed:" in log and "RuntimeError: feed died" in log
+
+
+def test_open_trade_survives_restart(tmp_path):
+    from kalshi_btc_bot.late_breakdown import LateBreakdownPaper
+
+    bot = LateBreakdownPaper(tmp_path)
+    bot.unsettled.append({"time_utc": "x", "ticker": "T9", "side": "NO", "level": "hard", "secs_left": 120,
+                          "contracts": 22, "avg_price": 0.9, "fee": 0.14, "cost": 19.94, "close_ts": 100,
+                          "result": "", "won": "", "pnl": ""})
+    bot._save_open()
+
+    class FakeKalshi:
+        key = None
+        def result(self, ticker):
+            return "no"
+
+    again = LateBreakdownPaper(tmp_path)  # restarted process
+    again.k = FakeKalshi()
+    assert len(again.unsettled) == 1
+    again.settle(1000)
+    assert again.unsettled == [] and ",no,1," in (tmp_path / "trades.csv").read_text()
+    assert LateBreakdownPaper(tmp_path).unsettled == []
