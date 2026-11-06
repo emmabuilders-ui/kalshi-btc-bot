@@ -225,7 +225,10 @@ def history_events(L: dict[str, Path]) -> dict:
             lv[_ts(r["open_utc"])] = [[k, v[0], float(v[1])] for k, v in d.items()]
     levels = [[t, lv[t]] for t in sorted(lv)]
     buys = []
-    for bot, key in (("Breakdown", "breakdown"), ("Fast push", "fastpush")):
+    for bot, key in (("Breakdown", "breakdown"), ("Fast push", "fastpush"), ("Squeeze", "squeeze"),
+                     ("Squeeze maker", "squeeze_maker")):
+        if key not in L:
+            continue
         res = {(r.get("ticker"), r.get("side")): r for r in _rows(L[key] / "trades.csv")}
         for r in _rows(L[key] / "signals.csv"):
             if not str(r.get("decision", "")).startswith("BUY"):
@@ -635,13 +638,17 @@ class Dashboard:
         tt = L.get("trend_tight") or Path("/nonexistent")
         mkr = L.get("maker") or Path("/nonexistent")
         qt = L.get("quiet") or Path("/nonexistent")
+        sq = L.get("squeeze") or Path("/nonexistent")
+        sqm = L.get("squeeze_maker") or Path("/nonexistent")
         hour_close = (int(time.time()) // 3600 + 1) * 3600
         return {
             "now": time.time(), "prices": pts, "error": self.err, "hour_close": hour_close,
             "range": {"open": range_positions(L["range"]),
                       "settled": settled_summary(_rows(L["range"] / "trades.csv"))},
             "session": s, "quotes": self.quotes, "q15": self.q15,
-            "buys": session_buys(bd, s.get("ticker"), "Breakdown") + session_buys(fp, s.get("ticker"), "Fast push"),
+            "buys": session_buys(bd, s.get("ticker"), "Breakdown") + session_buys(fp, s.get("ticker"), "Fast push")
+                    + session_buys(_rows(sq / "signals.csv"), s.get("ticker"), "Squeeze")
+                    + session_buys(_rows(sqm / "signals.csv"), s.get("ticker"), "Squeeze maker"),
             "pnl": sorted(pnl_points(_rows(L["range"] / "trades.csv"), "Range")
                           + pnl_points(_rows(L["breakdown"] / "trades.csv"), "Breakdown")
                           + pnl_points(_rows(L["fastpush"] / "trades.csv"), "Fast push")
@@ -650,7 +657,9 @@ class Dashboard:
                           + pnl_points(_rows(tb / "trades.csv"), "Trend broad")
                           + pnl_points(_rows(tt / "trades.csv"), "Trend tight")
                           + pnl_points(_rows(mkr / "trades.csv"), "Maker")
-                          + pnl_points(_rows(qt / "trades.csv"), "Quiet"),
+                          + pnl_points(_rows(qt / "trades.csv"), "Quiet")
+                          + pnl_points(_rows(sq / "trades.csv"), "Squeeze")
+                          + pnl_points(_rows(sqm / "trades.csv"), "Squeeze maker"),
                           key=lambda r: r["time_utc"]),
             "breakdown": settled_summary(_rows(L["breakdown"] / "trades.csv")),
             "fastpush": settled_summary(_rows(L["fastpush"] / "trades.csv")),
@@ -660,6 +669,8 @@ class Dashboard:
             "trend_tight": settled_summary(_rows(tt / "trades.csv")),
             "maker": settled_summary(_rows(mkr / "trades.csv")),
             "quiet": settled_summary(_rows(qt / "trades.csv")),
+            "squeeze": settled_summary(_rows(sq / "trades.csv")),
+            "squeeze_maker": settled_summary(_rows(sqm / "trades.csv")),
             "perf": self.perf(),
         }
 
@@ -668,7 +679,8 @@ class Dashboard:
         out = [perf_row(name, _rows((L.get(key) or none) / "trades.csv")) for name, key in (
             ("Range", "range"), ("Breakdown", "breakdown"), ("Fast push", "fastpush"),
             ("Fast-push range", "fastpush_range"), ("Favorite", "favorite"), ("Trend broad", "trend_broad"),
-            ("Trend tight", "trend_tight"), ("Maker (limit order)", "maker"), ("Quiet favorite", "quiet"))]
+            ("Trend tight", "trend_tight"), ("Maker (limit order)", "maker"), ("Quiet favorite", "quiet"),
+            ("Squeeze", "squeeze"), ("Squeeze maker", "squeeze_maker"))]
         if L.get("range5"):
             r5 = _rows(L["range5"] / "trades.csv")
             for a in range(1, 6):
@@ -784,9 +796,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--raw:#b9bec5;--buyzone:#14632f;--fp:#8e44ad;--fpr:#d35400;--fav:#0e8a9e;--tb:#b5179e;--tt:#2b4bd1;--mkr:#7a5c00;--qt:#5b6b00;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--raw:#b9bec5;--buyzone:#14632f;--fp:#8e44ad;--fpr:#d35400;--fav:#0e8a9e;--tb:#b5179e;--tt:#2b4bd1;--mkr:#7a5c00;--qt:#5b6b00;--sq:#a0522d;--sqm:#006d77;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--raw:#555c65;--buyzone:#3fbf6a;--fp:#c08be0;--fpr:#f39c5a;--fav:#4fc3d6;--tb:#e07ad0;--tt:#7f95ff;--mkr:#d9b44a;--qt:#b5c94a;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--raw:#555c65;--buyzone:#3fbf6a;--fp:#c08be0;--fpr:#f39c5a;--fav:#4fc3d6;--tb:#e07ad0;--tt:#7f95ff;--mkr:#d9b44a;--qt:#b5c94a;--sq:#e0916a;--sqm:#4fd1c5;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
@@ -797,6 +809,8 @@ h1{font-size:18px;margin:0}
 .bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}
 .bar button{border:1px solid var(--grid2);background:var(--card);color:var(--fg);padding:5px 11px;border-radius:6px;cursor:pointer;font:inherit}
 .bar button:focus-visible{outline:2px solid var(--strike)}
+.bar button.chip{padding:4px 9px;border-left-width:5px}
+.bar button.chip.off{opacity:.45;text-decoration:line-through;background:transparent}
 .card{background:var(--card);border:1px solid var(--grid);border-radius:8px;padding:12px}
 #sc{overflow-x:auto;overflow-y:hidden}
 #stick{position:sticky;left:0}
@@ -822,10 +836,11 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
 <div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button>
 <span class="mut" id="zinfo"></span></div>
+<div class="bar" id="filters" aria-label="Show or hide each bot's trades on the chart"></div>
 <div class="card">
 <div class="key r5only" style="display:none"><span>trade bands: light shade = <b>won</b>, dark shade = <b>lost</b>, dashed outline = open; color = account (1 blue · 2 orange · 3 green · 4 gold · 5 purple)</span></div>
 <div class="key"><span class="nor5"><i style="background:var(--no);opacity:.35"></i>range NO band</span><span class="nor5"><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
-<span class="nor5">band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span class="nor5">markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot · ◆ Fast-push range bot · ▼ Favorite bot · ★ Trend broad bot · ✦ Trend tight bot · ⬢ Maker (limit-order) bot · ✚ Quiet favorite bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
+<span class="nor5">band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span class="nor5">markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot · ◆ Fast-push range bot · ▼ Favorite bot · ★ Trend broad bot · ✦ Trend tight bot · ⬢ Maker (limit-order) bot · ✚ Quiet favorite bot · ⬟ Squeeze bot · ⬡ Squeeze maker bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
 <span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><b style="color:var(--sup)">╌</b> rising support / <b style="color:var(--res)">╌</b> falling resistance trend lines (5-min swings), × = break</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin: 60-second BRTI average (black, what Kalshi settles on), BRTI each second (light gray), and every trade</div><canvas id="c"></canvas>
@@ -857,6 +872,8 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <div class="card"><div class="mut">Trend tight bot, settled</div><div class="big" id="stt"></div></div>
 <div class="card"><div class="mut">Maker bot, settled</div><div class="big" id="smk"></div></div>
 <div class="card"><div class="mut">Quiet favorite bot, settled</div><div class="big" id="sqt"></div></div>
+<div class="card"><div class="mut">Squeeze bot, settled</div><div class="big" id="ssq"></div></div>
+<div class="card"><div class="mut">Squeeze maker bot, settled</div><div class="big" id="ssqm"></div></div>
 </div>
 <p class="mut">BRTI is the index Kalshi settles on; settlement is its average over the last 60 seconds. Paper trades only. Updates every 2 seconds.</p>
 </div></div>
@@ -920,6 +937,21 @@ function zoom(d){if(!D)return;const [T0,T1]=range();
 $('zin').onclick=()=>zoom(1);$('zout').onclick=()=>zoom(-1);
 $('back').onclick=()=>{follow=false;sc.scrollLeft-=3600*pps()};
 $('live').onclick=()=>{follow=true;layout()};
+// Trade filter: one button per bot (per account on the 5-account page) to show or hide its bands, markers and labels
+const FBOTS=[['Range','●','--yes'],['Breakdown','▲','--no'],['Fast push','■','--fp'],['FP range','◆','--fpr'],['Favorite','▼','--fav'],['Trend broad','★','--tb'],['Trend tight','✦','--tt'],['Maker','⬢','--mkr'],['Quiet','✚','--qt'],['Squeeze','⬟','--sq'],['Squeeze maker','⬡','--sqm']];
+const HKEY=R5?'hiddenAccounts':'hiddenBots';let HID=new Set();
+try{HID=new Set(JSON.parse(localStorage.getItem(HKEY)||'[]').map(String))}catch(e){}
+const isHid=k=>HID.has(String(k)),fkey=r=>R5?r.acct:(r.bot||'Range');
+function buildFilters(){
+ const items=R5?[1,2,3,4,5].map(a=>[String(a),'Acct '+a,acol({acct:a})]):FBOTS.map(([k,m,c])=>[k,m+' '+k,css(c)]),bar=$('filters');
+ bar.innerHTML='<span class="mut">Show trades:</span>'+items.map(([k,t,c])=>`<button class="chip" data-k="${k}" style="border-left-color:${c}">${t}</button>`).join('')+'<button id="fall">All</button><button id="fnone">None</button>';
+ const sync=()=>bar.querySelectorAll('.chip').forEach(b=>{const off=isHid(b.dataset.k);b.classList.toggle('off',off);b.setAttribute('aria-pressed',off?'false':'true')});
+ bar.onclick=e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.id==='fall')HID.clear();else if(b.id==='fnone')items.forEach(i=>HID.add(i[0]));else if(b.dataset.k){const k=b.dataset.k;HID.has(k)?HID.delete(k):HID.add(k)}else return;
+  try{localStorage.setItem(HKEY,JSON.stringify([...HID]))}catch(err){}
+  sync();draw()};
+ sync()}
+buildFilters();
 let showLv=true;let showTl=true;$('tlbtn').onclick=()=>{showTl=!showTl;$('tlbtn').textContent=(showTl?'Hide':'Show')+' trend lines';draw()};
 // Trend lines, same definition as the trend line research (research/trend_lines/tl.py), 5-minute swings:
 // swing low = lowest BRTI within 5 min either side (known 5 min later); support = line from an earlier, lower swing low
@@ -970,7 +1002,7 @@ function draw(){
  $('zinfo').textContent=`${Math.round(sc.clientWidth/pps()/3600*10)/10} hours on screen`;
  {const [a]=range();const d=new Date(a*1000);$('slL').textContent=fDay.format(d)+' '+hm(a)}
  perfTable();
- sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);sum('sfr',D.fastpush_range||{trades:0,wins:0,pnl:0});sum('sfv',D.favorite||{trades:0,wins:0,pnl:0});sum('stb',D.trend_broad||{trades:0,wins:0,pnl:0});sum('stt',D.trend_tight||{trades:0,wins:0,pnl:0});sum('smk',D.maker||{trades:0,wins:0,pnl:0});sum('sqt',D.quiet||{trades:0,wins:0,pnl:0});
+ sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);sum('sfr',D.fastpush_range||{trades:0,wins:0,pnl:0});sum('sfv',D.favorite||{trades:0,wins:0,pnl:0});sum('stb',D.trend_broad||{trades:0,wins:0,pnl:0});sum('stt',D.trend_tight||{trades:0,wins:0,pnl:0});sum('smk',D.maker||{trades:0,wins:0,pnl:0});sum('sqt',D.quiet||{trades:0,wins:0,pnl:0});sum('ssq',D.squeeze||{trades:0,wins:0,pnl:0});sum('ssqm',D.squeeze_maker||{trades:0,wins:0,pnl:0});
  const [T0,T1]=range(),fits=(T1-T0)*pps()+90<=sc.clientWidth;
  // when the whole history fits on screen, keep "now" at the right edge (blank before the history starts, not after now)
  const tL=fits?T1+90/pps()-sc.clientWidth/pps():T0+sc.scrollLeft/pps(),tR=tL+sc.clientWidth/pps();
@@ -979,7 +1011,7 @@ function draw(){
  const X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
  const vis=P.filter(p=>p[0]>=tL-60&&p[0]<=tR+60);
  const ses=(H?H.sessions:[]).concat(D.session&&D.session.strike?[[D.session.open_ts,D.session.strike]]:[]).filter(s=>s[0]+900>=tL&&s[0]<=tR);
- const rng=(H?H.range:[]).filter(r=>r.close>=tL&&r.close-3600<=tR&&r.lo!=null);
+ const rng=(H?H.range:[]).filter(r=>r.close>=tL&&r.close-3600<=tR&&r.lo!=null&&!isHid(fkey(r)));
  let ys=vis.map(p=>p[1]);if(!ys.length&&last)ys=[last[1]];
  for(const s of ses)ys.push(s[1]);for(const r of rng)ys.push(r.lo,r.hi);
  let lo=Math.min(...ys),hi=Math.max(...ys);const pad=(hi-lo)*0.06+5;lo-=pad;hi+=pad;
@@ -1068,7 +1100,7 @@ function draw(){
   if(short){const [lx,ly,tw]=boxLabel(x,texts,col,X(r.close-3600),X(r.close),Y(r.hi),Y(r.lo));const ex=lx>x?lx:(lx+tw<x?lx+tw:x);
    g.strokeStyle=col;g.lineWidth=1.2;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yd);g.lineTo(x,ly);g.lineTo(ex,ly);g.stroke()}
   g.setLineDash([]);marker(g,r.bot||'Range',x,yd,R5?acol(r,r.status==='won'?'light':r.status==='lost'?'dark':''):col)}
- for(const b of (H?H.buys:[]).filter(b=>b.t>=tL&&b.t<=tR)){const y=at(b.t);if(y==null)continue;const x=X(b.t),yy=Y(y),up=b.side==='YES',short=short0&&x>=L&&x<=w-R;
+ for(const b of (H?H.buys:[]).filter(b=>b.t>=tL&&b.t<=tR&&!isHid(b.bot))){const y=at(b.t);if(y==null)continue;const x=X(b.t),yy=Y(y),up=b.side==='YES',short=short0&&x>=L&&x<=w-R;
   marker(g,b.bot,x,yy,css(st[b.status]));
   if(short){const col=css(st[b.status]),ty=yy+(up?-28:28);
    const [lx,ly,tw]=label(x+12,ty,`${hm(b.t)} ${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''} ${b.level||''} → ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,col);g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yy);g.lineTo(lx>x?lx:lx+tw,ly);g.stroke();g.setLineDash([])}}
@@ -1106,9 +1138,11 @@ function marker(g,bot,x,y,col){g.fillStyle=col;g.strokeStyle=css('--card');g.lin
  else if(bot==='Trend broad'){for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2?3.2:7.5;i?g.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)):g.moveTo(x+r*Math.cos(a),y+r*Math.sin(a))}g.closePath()}
  else if(bot==='Trend tight'){for(let i=0;i<8;i++){const a=-Math.PI/2+i*Math.PI/4,r=i%2?2.6:7.5;i?g.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)):g.moveTo(x+r*Math.cos(a),y+r*Math.sin(a))}g.closePath()}
  else if(bot==='Quiet'){g.rect(x-2.2,y-7,4.4,14);g.rect(x-7,y-2.2,14,4.4)}
+ else if(bot==='Squeeze'){for(let i=0;i<5;i++){const a=-Math.PI/2+i*2*Math.PI/5;i?g.lineTo(x+7*Math.cos(a),y+7*Math.sin(a)):g.moveTo(x+7*Math.cos(a),y+7*Math.sin(a))}g.closePath()}
+ else if(bot==='Squeeze maker'){for(let i=0;i<6;i++){const a=Math.PI/6+i*Math.PI/3;i?g.lineTo(x+7.5*Math.cos(a),y+7.5*Math.sin(a)):g.moveTo(x+7.5*Math.cos(a),y+7.5*Math.sin(a))}g.closePath();g.moveTo(x+3.2,y);g.arc(x,y,3.2,0,7,true)}
  else if(bot==='Maker'){for(let i=0;i<6;i++){const a=i*Math.PI/3;i?g.lineTo(x+6.5*Math.cos(a),y+6.5*Math.sin(a)):g.moveTo(x+6.5*Math.cos(a),y+6.5*Math.sin(a))}g.closePath()}
  else g.arc(x,y,5,0,7);g.fill();g.stroke()}
-const BOTS=[['Total','--line'],['Range','--yes'],['Breakdown','--no'],['Fast push','--fp'],['FP range','--fpr'],['Favorite','--fav'],['Trend broad','--tb'],['Trend tight','--tt'],['Maker','--mkr'],['Quiet','--qt']];
+const BOTS=[['Total','--line'],['Range','--yes'],['Breakdown','--no'],['Fast push','--fp'],['FP range','--fpr'],['Favorite','--fav'],['Trend broad','--tb'],['Trend tight','--tt'],['Maker','--mkr'],['Quiet','--qt'],['Squeeze','--sq'],['Squeeze maker','--sqm']];
 function plchart(tL,tR){
  const [g,w]=setup($('pl'),240),h=240,L=66,R=GUT,T=8,B=22;
  const X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
@@ -1169,14 +1203,14 @@ function trades(){if(!H)return;const sig=JSON.stringify([H.range,H.buys]);if(sig
  for(const b of H.buys||[])R.push({t:b.t,bot:b.bot,mkt:`15-min ${hm(Math.floor(b.t/900)*900+900)} · ${b.level||''}`,
   side:b.side,n:b.n,price:b.price!=null?b.price:b.ask,model:null,status:b.status,pnl:b.pnl,cost:b.cost});
  R.sort((a,b)=>a.t-b.t);
- let cum=0,spent=0,nset=0,wins=0,sp=0,sm=0,nm=0;const W={};const z=()=>({w:0,l:0,o:0,p:0,s:0,sp:0,sm:0,nm:0});for(const k of ['Range','Breakdown','Fast push','FP range','Favorite','Trend broad','Trend tight','Maker','Quiet'])W[k]=z();
+ let cum=0,spent=0,nset=0,wins=0,sp=0,sm=0,nm=0;const W={};const z=()=>({w:0,l:0,o:0,p:0,s:0,sp:0,sm:0,nm:0});for(const k of ['Range','Breakdown','Fast push','FP range','Favorite','Trend broad','Trend tight','Maker','Quiet','Squeeze','Squeeze maker'])W[k]=z();
  for(const r of R){const w=W[r.bot]||(W[r.bot]=z());
   if(r.cost!=null){spent+=r.cost;w.s+=r.cost}r.spent=r.cost!=null?spent:null;
   if(r.status==='open'){w.o++;r.cum=null;continue}nset++;
   r.status==='won'?(w.w++,wins++):w.l++;w.p+=r.pnl||0;cum+=r.pnl||0;r.cum=cum;r.avg=cum/nset;
   if(r.price!=null){sp+=r.price;w.sp+=r.price}if(r.model!=null){sm+=r.model;nm++;w.sm+=r.model;w.nm++}
   r.aprice=sp/nset;r.amodel=nm?sm/nm:null;r.awin=wins/nset}
- const mk=r=>r.bot==='Range'?'●':r.bot==='Breakdown'?'▲':r.bot==='FP range'?'◆':r.bot==='Favorite'?'▼':r.bot==='Trend broad'?'★':r.bot==='Trend tight'?'✦':r.bot==='Maker'?'⬢':r.bot==='Quiet'?'✚':'■';
+ const mk=r=>r.bot==='Range'?'●':r.bot==='Breakdown'?'▲':r.bot==='FP range'?'◆':r.bot==='Favorite'?'▼':r.bot==='Trend broad'?'★':r.bot==='Trend tight'?'✦':r.bot==='Maker'?'⬢':r.bot==='Quiet'?'✚':r.bot==='Squeeze'?'⬟':r.bot==='Squeeze maker'?'⬡':'■';
  $('wl').innerHTML=Object.entries(W).map(([k,v])=>{const n=v.w+v.l;
   return `<span><b>${k}</b>: <span style="color:var(--win)">${v.w} won</span> / <span style="color:var(--lose)">${v.l} lost</span>${n?' ('+Math.round(v.w/n*100)+'% win)':''}${v.o?' · '+v.o+' open':''} · ${money(v.p)}${n?' · avg '+money(v.p/n)+'/trade · avg price '+cents(v.sp/n)+(v.nm?' · avg model '+cents(v.sm/v.nm):''):''} · spent $${v.s.toFixed(2)}</span>`}).join('');
  $('tinfo').textContent=`${R.length} trades · total ${money(cum)} settled · avg ${nset?money(cum/nset):'–'} per trade · $${spent.toFixed(2)} spent · newest first`;
@@ -1199,7 +1233,7 @@ function tables(px){q15();trades();
  const s=D.session||{};rows='<tr><th>Break (ET)</th><th>Bot</th><th>Side</th><th>Level</th><th>Ask</th><th>Now</th></tr>';
  for(const b of D.buys){const win=(b.side==='YES')===(px>s.strike);
   rows+=`<tr><td>${hms(tsOf(b.time_utc))}</td><td>${b.bot}</td><td>${b.side}</td><td>${b.level} ${b.level_price?usd(b.level_price):''}</td><td>${b.ask?Math.round(b.ask*100)+'¢':''}</td><td><span class="pill ${win?'w':'l'}">${win?'winning':'losing'}</span></td></tr>`}
- if(!D.buys.length)rows+=`<tr><td colspan="6" class="mut">No buys this session${s.strike?' (strike '+usd(s.strike)+')':''}. Both bots only buy in the last 1–3 minutes.</td></tr>`;
+ if(!D.buys.length)rows+=`<tr><td colspan="6" class="mut">No buys this session${s.strike?' (strike '+usd(s.strike)+')':''}. The breakdown and fast-push bots only buy in the last 1–3 minutes; the squeeze bots buy after a Bollinger band break.</td></tr>`;
  $('pos15').innerHTML=rows;
 }
 tick();setInterval(tick,2000);setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
