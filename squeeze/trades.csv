@@ -1,0 +1,2 @@
+time_utc,ticker,side,level,secs_left,lag_s,contracts,avg_price,fee,cost,result,won,pnl
+2026-11-06 03:17:59,KXBTC15M-26NOV052230-30,NO,5-min squeeze,721,0,20,0.78,0.25,15.85,no,1,4.15

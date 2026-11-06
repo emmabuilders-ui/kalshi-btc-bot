@@ -1,0 +1,2 @@
+time_utc,ticker,side,level,level_price,secs_left,brti,squeeze_bars,lag_s,ask,ask_size,book,decision
+2026-11-06 03:18:00,KXBTC15M-26NOV052230-30,NO,5-min squeeze,75936.42,721,75915.77,12,0,0.78,5105.43,"[[0.22, 5105.43], [0.21, 5300.02], [0.2, 6125.57], [0.19, 6532.96], [0.18, 5445.85], [0.17, 5468.91]]",BUY NO
