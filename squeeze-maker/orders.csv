@@ -1,0 +1,4 @@
+time_utc,event,ticker,side,bid,queue_ahead,filled,contracts,ask_at_post,taker_avg,note
+2026-11-06 03:18:07,post,KXBTC15M-26NOV052230-30,NO,0.78,8884.43,0,20,0.79,0.79,
+2026-11-06 03:18:02,fill,KXBTC15M-26NOV052230-30,NO,0.78,8884.43,20,20,0.79,0.79,
+2026-11-06 03:18:02,done,KXBTC15M-26NOV052230-30,NO,0.78,8884.43,20,20,0.79,0.79,fully filled
