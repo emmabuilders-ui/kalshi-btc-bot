@@ -809,6 +809,8 @@ h1{font-size:18px;margin:0}
 .bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}
 .bar button{border:1px solid var(--grid2);background:var(--card);color:var(--fg);padding:5px 11px;border-radius:6px;cursor:pointer;font:inherit}
 .bar button:focus-visible{outline:2px solid var(--strike)}
+.bar button.chip{padding:4px 9px;border-left-width:5px}
+.bar button.chip.off{opacity:.45;text-decoration:line-through;background:transparent}
 .card{background:var(--card);border:1px solid var(--grid);border-radius:8px;padding:12px}
 #sc{overflow-x:auto;overflow-y:hidden}
 #stick{position:sticky;left:0}
@@ -834,6 +836,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
 <div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button>
 <span class="mut" id="zinfo"></span></div>
+<div class="bar" id="filters" aria-label="Show or hide each bot's trades on the chart"></div>
 <div class="card">
 <div class="key r5only" style="display:none"><span>trade bands: light shade = <b>won</b>, dark shade = <b>lost</b>, dashed outline = open; color = account (1 blue · 2 orange · 3 green · 4 gold · 5 purple)</span></div>
 <div class="key"><span class="nor5"><i style="background:var(--no);opacity:.35"></i>range NO band</span><span class="nor5"><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
@@ -934,6 +937,21 @@ function zoom(d){if(!D)return;const [T0,T1]=range();
 $('zin').onclick=()=>zoom(1);$('zout').onclick=()=>zoom(-1);
 $('back').onclick=()=>{follow=false;sc.scrollLeft-=3600*pps()};
 $('live').onclick=()=>{follow=true;layout()};
+// Trade filter: one button per bot (per account on the 5-account page) to show or hide its bands, markers and labels
+const FBOTS=[['Range','●','--yes'],['Breakdown','▲','--no'],['Fast push','■','--fp'],['FP range','◆','--fpr'],['Favorite','▼','--fav'],['Trend broad','★','--tb'],['Trend tight','✦','--tt'],['Maker','⬢','--mkr'],['Quiet','✚','--qt'],['Squeeze','⬟','--sq'],['Squeeze maker','⬡','--sqm']];
+const HKEY=R5?'hiddenAccounts':'hiddenBots';let HID=new Set();
+try{HID=new Set(JSON.parse(localStorage.getItem(HKEY)||'[]').map(String))}catch(e){}
+const isHid=k=>HID.has(String(k)),fkey=r=>R5?r.acct:(r.bot||'Range');
+function buildFilters(){
+ const items=R5?[1,2,3,4,5].map(a=>[String(a),'Acct '+a,acol({acct:a})]):FBOTS.map(([k,m,c])=>[k,m+' '+k,css(c)]),bar=$('filters');
+ bar.innerHTML='<span class="mut">Show trades:</span>'+items.map(([k,t,c])=>`<button class="chip" data-k="${k}" style="border-left-color:${c}">${t}</button>`).join('')+'<button id="fall">All</button><button id="fnone">None</button>';
+ const sync=()=>bar.querySelectorAll('.chip').forEach(b=>{const off=isHid(b.dataset.k);b.classList.toggle('off',off);b.setAttribute('aria-pressed',off?'false':'true')});
+ bar.onclick=e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.id==='fall')HID.clear();else if(b.id==='fnone')items.forEach(i=>HID.add(i[0]));else if(b.dataset.k){const k=b.dataset.k;HID.has(k)?HID.delete(k):HID.add(k)}else return;
+  try{localStorage.setItem(HKEY,JSON.stringify([...HID]))}catch(err){}
+  sync();draw()};
+ sync()}
+buildFilters();
 let showLv=true;let showTl=true;$('tlbtn').onclick=()=>{showTl=!showTl;$('tlbtn').textContent=(showTl?'Hide':'Show')+' trend lines';draw()};
 // Trend lines, same definition as the trend line research (research/trend_lines/tl.py), 5-minute swings:
 // swing low = lowest BRTI within 5 min either side (known 5 min later); support = line from an earlier, lower swing low
@@ -993,7 +1011,7 @@ function draw(){
  const X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
  const vis=P.filter(p=>p[0]>=tL-60&&p[0]<=tR+60);
  const ses=(H?H.sessions:[]).concat(D.session&&D.session.strike?[[D.session.open_ts,D.session.strike]]:[]).filter(s=>s[0]+900>=tL&&s[0]<=tR);
- const rng=(H?H.range:[]).filter(r=>r.close>=tL&&r.close-3600<=tR&&r.lo!=null);
+ const rng=(H?H.range:[]).filter(r=>r.close>=tL&&r.close-3600<=tR&&r.lo!=null&&!isHid(fkey(r)));
  let ys=vis.map(p=>p[1]);if(!ys.length&&last)ys=[last[1]];
  for(const s of ses)ys.push(s[1]);for(const r of rng)ys.push(r.lo,r.hi);
  let lo=Math.min(...ys),hi=Math.max(...ys);const pad=(hi-lo)*0.06+5;lo-=pad;hi+=pad;
@@ -1082,7 +1100,7 @@ function draw(){
   if(short){const [lx,ly,tw]=boxLabel(x,texts,col,X(r.close-3600),X(r.close),Y(r.hi),Y(r.lo));const ex=lx>x?lx:(lx+tw<x?lx+tw:x);
    g.strokeStyle=col;g.lineWidth=1.2;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yd);g.lineTo(x,ly);g.lineTo(ex,ly);g.stroke()}
   g.setLineDash([]);marker(g,r.bot||'Range',x,yd,R5?acol(r,r.status==='won'?'light':r.status==='lost'?'dark':''):col)}
- for(const b of (H?H.buys:[]).filter(b=>b.t>=tL&&b.t<=tR)){const y=at(b.t);if(y==null)continue;const x=X(b.t),yy=Y(y),up=b.side==='YES',short=short0&&x>=L&&x<=w-R;
+ for(const b of (H?H.buys:[]).filter(b=>b.t>=tL&&b.t<=tR&&!isHid(b.bot))){const y=at(b.t);if(y==null)continue;const x=X(b.t),yy=Y(y),up=b.side==='YES',short=short0&&x>=L&&x<=w-R;
   marker(g,b.bot,x,yy,css(st[b.status]));
   if(short){const col=css(st[b.status]),ty=yy+(up?-28:28);
    const [lx,ly,tw]=label(x+12,ty,`${hm(b.t)} ${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''} ${b.level||''} → ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,col);g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yy);g.lineTo(lx>x?lx:lx+tw,ly);g.stroke();g.setLineDash([])}}
