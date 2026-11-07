@@ -19,14 +19,20 @@ def git_push_logs(out: Path, message: str, unstage: list[str] | tuple[str, ...] 
     later `git add` fails with exit 128 until it is removed; a lock older than two minutes cannot belong
     to a running git, so it is cleared first. Paths in `unstage` (a file still being written) stay out
     of the commit."""
-    lock = out / ".git" / "index.lock"
+    git = ["git", "-C", str(out)]
+    # the bot's folder is usually a subfolder of the log repo (/opt/kalshi-logs-range5/range5 inside
+    # /opt/kalshi-logs-range5), so the lock lives in the repo's own .git, wherever that is
     try:
+        gd = subprocess.run(git + ["rev-parse", "--git-dir"], capture_output=True, text=True, timeout=30)
+        gitdir = Path(gd.stdout.strip()) if gd.returncode == 0 and gd.stdout.strip() else Path(".git")
+        if not gitdir.is_absolute():
+            gitdir = out / gitdir
+        lock = gitdir / "index.lock"
         if lock.exists() and time.time() - lock.stat().st_mtime > STALE_LOCK_SECS:
             lock.unlink()
             log.warning("removed stale %s", lock)
-    except OSError as e:
-        log.warning("could not remove %s: %s", lock, e)
-    git = ["git", "-C", str(out)]
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("could not check the git lock: %s", e)
 
     def run(*args: str, check: bool = True, timeout: int = 60) -> subprocess.CompletedProcess:
         r = subprocess.run(git + list(args), capture_output=True, text=True, timeout=timeout)
