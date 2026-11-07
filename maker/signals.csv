@@ -1,0 +1,2 @@
+time_utc,ticker,side,mins_left,floor,cap,brti,slope_per_s,projection,centre_dist_pct,ask_snapshot,bid,improved,queue_ahead,taker_avg,book
+2026-11-07 02:42:00,KXBTC-26NOV0622-B75950,YES,18,75900,75999.99,75943.2,-0.0009,75942.23,13.6,0.69,0.68,0,5.0,0.69,"[[0.68, 5.0], [0.67, 104.0], [0.66, 4.01], [0.65, 204.0], [0.64, 57.0], [0.63, 10.0]]"
