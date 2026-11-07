@@ -121,17 +121,18 @@ def _ts(s: str) -> int:
     return int(datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp())
 
 
-def read_price_hour(path: Path, res: int) -> list[list[float]]:
-    """One hour of the breakdown bot's 1-second price log, cut to one point per `res` seconds."""
-    out: dict[int, float] = {}
+def gz_lines(path: Path) -> list[str]:
+    """Lines of one of the breakdown bot's price files, tolerating damage.
+
+    The file is appended to by the bot, one gzip member per run. A member cut off by a restart or a
+    power cut (or still being written) is decompressed as far as it goes, then reading resumes at the
+    next member. A cut-off member usually ends in half a line; that half is dropped, so it can't run
+    into the first line of the next member (e.g. "1793881851" + "1793883000,79661.83,..." read as one
+    huge time). Damaged bytes inside a member ("invalid block type") end that member the same way."""
     try:
         raw = path.read_bytes()
     except OSError:
         return []
-    # The file is appended to by the bot, one gzip member per run. A member cut off by a restart
-    # (or still being written) is decompressed as far as it goes, then reading resumes at the next member.
-    # A cut-off member usually ends in half a line; that half is dropped, so it can't run into the first
-    # line of the next member (e.g. "1793881851" + "1793883000,79661.83,..." read as one huge time).
     text, pos = [], 0
     while pos < len(raw):
         d, part = zlib.decompressobj(31), []
@@ -153,13 +154,19 @@ def read_price_hour(path: Path, res: int) -> list[list[float]]:
         if d.eof or nxt < 0:
             break
         pos = nxt
+    return b"".join(text).decode("utf-8", "replace").splitlines()
+
+
+def read_price_hour(path: Path, res: int) -> list[list[float]]:
+    """One hour of the breakdown bot's 1-second price log, cut to one point per `res` seconds."""
+    out: dict[int, float] = {}
     # only times inside the file's own UTC hour (prices/YYYY-MM-DD/HH.csv.gz) are kept
     try:
         t0 = _hour_end(f"{path.parent.name}/{path.name[:2]}") - 3600
         t1 = t0 + 3600
     except ValueError:
         t0, t1 = 1_000_000_000, 10_000_000_000
-    for line in b"".join(text).decode("utf-8", "replace").splitlines():
+    for line in gz_lines(path):
         a = line.split(",")
         if len(a) < 2 or not a[0].isdigit() or not a[1]:
             continue
@@ -310,16 +317,15 @@ def current_levels(L: dict[str, Path], s: dict) -> list:
 def hour_seconds(path: Path, h0: int) -> np.ndarray:
     """One hour of the breakdown bot's price log as 3600 one-second values (nan where missing)."""
     a = np.full(3600, np.nan)
-    try:
-        with gzip.open(path, "rt") as f:
-            for line in f:
-                x = line.split(",")
-                if x[0].isdigit() and x[1]:
-                    i = int(x[0]) - h0
-                    if 0 <= i < 3600:
-                        a[i] = float(x[1])
-    except (OSError, EOFError, ValueError):
-        pass
+    for line in gz_lines(path):   # tolerant of a file cut off or damaged by a restart (gzip.open is not)
+        x = line.split(",")
+        try:
+            if len(x) >= 2 and x[0].isdigit() and x[1]:
+                i = int(x[0]) - h0
+                if 0 <= i < 3600:
+                    a[i] = float(x[1])
+        except ValueError:
+            continue
     return a
 
 
@@ -347,7 +353,10 @@ class LevelTracker:
             if h0 < upto - WARMUP - 7200:
                 continue
             if h0 not in self.secs or h0 >= cur - 3600:
-                self.secs[h0] = hour_seconds(f, h0)
+                try:
+                    self.secs[h0] = hour_seconds(f, h0)
+                except Exception as e:   # never let one bad file stop the levels for every hour
+                    log.warning("levels: skipping %s: %s", f, e)
         for h0 in [h for h in self.secs if h < upto - WARMUP - 7200]:
             del self.secs[h0]
 

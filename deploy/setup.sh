@@ -18,6 +18,8 @@
 # Kalshi private key (paste it). Re-running it is safe: it updates the code and restarts.
 set -euo pipefail
 
+main() {
+
 REPO="emmabuilders-ui/kalshi-btc-bot"
 BRANCH="${BRANCH:-main}"
 LOG_BRANCH="paper-logs"
@@ -629,3 +631,6 @@ echo
 echo "Done. All the paper traders and the live chart are running and restart by themselves after a reboot."
 echo "Commands:  kbot status   kbot log   kbot health   kbot update   kbot chart   kbot touch BTC 1h 6 +1%"
 kbot chart
+}
+
+main "$@"

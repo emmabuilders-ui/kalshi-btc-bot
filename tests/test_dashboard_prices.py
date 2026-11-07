@@ -34,3 +34,23 @@ def test_perf_row():
     assert (r["trades"], r["wins"], r["win_pct"], r["avg_price"], r["gap"]) == (2, 1, 50.0, 75.0, -25.0)
     assert abs(r["break_even"] - 76.25) <= 0.06 and abs(r["ev"] + 26.25) <= 0.06 and r["pnl"] == -10.5
     assert perf_row("Y", []) == {"bot": "Y", "trades": 0}
+
+
+def test_damaged_gzip_member_yields_what_came_before_it(tmp_path):
+    """A price file damaged mid-member (power cut, hard reset) must not raise 'invalid block type'
+    and must still give the seconds that were written before the damage."""
+    import gzip
+    import numpy as np
+    from kalshi_btc_bot.dashboard import hour_seconds, read_price_hour
+    h0 = 1793883600  # 2026-11-05 13:00 UTC
+    good = gzip.compress("".join(f"{h0 + i},{80000 + i}\n" for i in range(600)).encode())
+    bad = bytearray(gzip.compress("".join(f"{h0 + i},{80000 + i}\n" for i in range(600, 3600)).encode()))
+    bad[40:60] = b"\xff" * 20      # corrupt the second member's deflate stream
+    d = tmp_path / "2026-11-05"
+    d.mkdir()
+    f = d / "13.csv.gz"
+    f.write_bytes(good + bytes(bad))
+    a = hour_seconds(f, h0)
+    assert a[0] == 80000 and a[599] == 80599 and np.isnan(a[3599])
+    pts = read_price_hour(f, 5)
+    assert pts[0][0] == h0 and 80000 <= pts[0][1] <= 80004 and 100 <= len(pts) <= 120
