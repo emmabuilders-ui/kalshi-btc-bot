@@ -24,7 +24,6 @@ import json
 import logging
 import math
 import os
-import subprocess
 import time
 from datetime import datetime, timezone
 from importlib import resources
@@ -34,6 +33,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 
 from .late_breakdown import KalshiClient, kalshi_fee
+from .logpush import git_push_logs
 
 log = logging.getLogger("kalshi_btc_bot")
 
@@ -186,11 +186,7 @@ class RangePaper:
             return
         self._last_push = now
         try:
-            git = ["git", "-C", str(self.out)]
-            subprocess.run(git + ["add", "-A", "."], check=True, capture_output=True, timeout=60)
-            subprocess.run(git + ["commit", "-qm", f"range paper log {datetime.now(timezone.utc):%Y-%m-%d %H:%M}"],
-                           capture_output=True, timeout=60)
-            subprocess.run(git + ["push", "-q", "origin", "HEAD"], check=True, capture_output=True, timeout=120)
+            git_push_logs(self.out, f"range paper log {datetime.now(timezone.utc):%Y-%m-%d %H:%M}")
         except Exception as e:
             log.warning("log push failed: %s", e)
 
