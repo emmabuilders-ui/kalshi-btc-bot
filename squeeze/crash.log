@@ -1,1 +1,5 @@
 2026-11-07 17:39:36 pid 1827 max_mem 82MB: start
+2026-11-07 17:56:43 pid 1827 max_mem 120MB: stopped by SIGTERM
+2026-11-07 17:57:58 pid 742 max_mem 82MB: start
+2026-11-07 17:58:49 pid 742 max_mem 105MB: stopped by SIGTERM
+2026-11-07 17:59:01 pid 1810 max_mem 82MB: start
