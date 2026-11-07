@@ -16,19 +16,21 @@ def _git(*a, cwd):
 def repo(tmp_path):
     origin = tmp_path / "origin.git"
     _git("init", "-q", "--bare", str(origin), cwd=tmp_path)
-    out = tmp_path / "logs"
-    out.mkdir()
-    _git("init", "-q", "-b", "paper-logs", cwd=out)
-    _git("config", "user.email", "kbot@localhost", cwd=out)
-    _git("config", "user.name", "kbot", cwd=out)
-    _git("remote", "add", "origin", str(origin), cwd=out)
+    # as on the droplet: the repo root is /opt/kalshi-logs-x and the bot writes to its subfolder /opt/kalshi-logs-x/x
+    root = tmp_path / "logs"
+    out = root / "range5"
+    out.mkdir(parents=True)
+    _git("init", "-q", "-b", "paper-logs", cwd=root)
+    _git("config", "user.email", "kbot@localhost", cwd=root)
+    _git("config", "user.name", "kbot", cwd=root)
+    _git("remote", "add", "origin", str(origin), cwd=root)
     (out / "trades.csv").write_text("a,b\n")
     return out, origin
 
 
 def test_stale_lock_is_cleared_and_logs_are_pushed(repo):
     out, origin = repo
-    lock = out / ".git" / "index.lock"
+    lock = out.parent / ".git" / "index.lock"   # in the repo root, not the bot's subfolder
     lock.write_text("")
     old = time.time() - 600
     os.utime(lock, (old, old))
@@ -39,7 +41,7 @@ def test_stale_lock_is_cleared_and_logs_are_pushed(repo):
 
 def test_fresh_lock_is_left_alone_and_the_error_names_git(repo):
     out, _ = repo
-    (out / ".git" / "index.lock").write_text("")
+    (out.parent / ".git" / "index.lock").write_text("")
     with pytest.raises(RuntimeError, match="git add exit 128.*index.lock"):
         git_push_logs(out, "paper log test")
 
@@ -50,4 +52,4 @@ def test_unstaged_file_stays_out_of_the_commit(repo):
     (out / "prices" / "open.csv.gz").write_bytes(b"x")
     git_push_logs(out, "paper log test", ["prices/open.csv.gz"])
     files = _git("ls-tree", "-r", "--name-only", "paper-logs", cwd=origin).stdout.split()
-    assert files == ["trades.csv"]
+    assert files == ["range5/trades.csv"]
