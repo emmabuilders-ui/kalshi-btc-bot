@@ -1,0 +1,2 @@
+time_utc,ticker,side,mins_left,contracts,avg_price,fee,cost,ask_at_post,taker_avg,taker_fee_saved,result,won,pnl
+2026-11-07 03:52:00,KXBTC-26NOV0623-B75750,YES,8,20,0.71,0.08,14.28,0.72,0.7225,0.21,yes,1,5.72
