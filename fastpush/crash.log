@@ -1,1 +1,22 @@
 2026-11-07 17:39:34 pid 1818 max_mem 49MB: start
+2026-11-07 17:56:43 pid 1818 max_mem 89MB: stopped by SIGTERM
+2026-11-07 17:57:54 pid 734 max_mem 49MB: start
+2026-11-07 17:58:25 pid 734 max_mem 58MB: crashed:
+Traceback (most recent call last):
+  File "/opt/kalshi-btc-bot/.venv/lib/python3.12/site-packages/kalshi_btc_bot/late_breakdown.py", line 592, in run
+    self._loop(seconds)
+  File "/opt/kalshi-btc-bot/.venv/lib/python3.12/site-packages/kalshi_btc_bot/late_breakdown.py", line 603, in _loop
+    self.warm_up(start)
+  File "/opt/kalshi-btc-bot/.venv/lib/python3.12/site-packages/kalshi_btc_bot/late_breakdown.py", line 442, in warm_up
+    self.series.brti.update(self.k.brti_hour(h))
+                            ^^^^^^^^^^^^^^^^^^^
+  File "/opt/kalshi-btc-bot/.venv/lib/python3.12/site-packages/kalshi_btc_bot/late_breakdown.py", line 238, in brti_hour
+    j = self.get("/cfbenchmarks/history/values", retries=10, id="BRTI", timespan="HOUR", timestamp=stamp)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/kalshi-btc-bot/.venv/lib/python3.12/site-packages/kalshi_btc_bot/late_breakdown.py", line 206, in get
+    r.raise_for_status()
+  File "/opt/kalshi-btc-bot/.venv/lib/python3.12/site-packages/requests/models.py", line 1167, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 429 Client Error: Too Many Requests for url: https://api.elections.kalshi.com/trade-api/v2/cfbenchmarks/history/values?id=BRTI&timespan=HOUR&timestamp=2026-11-05T18%3A00%3A00Z
+
+2026-11-07 17:58:57 pid 1788 max_mem 49MB: start
