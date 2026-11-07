@@ -1,2 +1,3 @@
 ticker,time_utc,bid,ask_at_post,taker_avg,taker_n,mins_left,result,won
 KXBTC-26NOV0622-B75950,2026-11-07 02:42:00,0.68,0.69,0.69,20,18,yes,1
+KXBTC-26NOV0702-B75950,2026-11-07 06:43:00,0.76,0.77,0.77,20,17,yes,1
