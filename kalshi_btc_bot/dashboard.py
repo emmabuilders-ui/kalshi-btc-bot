@@ -1,6 +1,6 @@
 """Live chart of the paper bots, served from the server itself (read-only, no orders).
 
-Open http://<server-ip>:8080/<token>/ in any browser. The page refreshes every 2 seconds:
+Open http://<server-ip>:8080/<token>/ in any browser. The page asks for new data every 2 seconds (one request at a time):
 the live BRTI price (Kalshi's cfbenchmarks feed, 1-second values), the hourly range bot's open
 bands, the 15-minute strike, and the buys of the two 15-minute bots, with settled P/L so far.
 
@@ -370,7 +370,7 @@ class LevelTracker:
         np.maximum.accumulate(idx, out=idx)
         return b[idx]
 
-    def update(self, now: float, live: dict[int, float], budget: float = 20.0):
+    def update(self, now: float, live: dict[int, float], budget: float = 2.0):
         """Fill in any missing minutes up to now (oldest first, at most `budget` seconds of work)."""
         self.live = live
         self._load_hours(int(now))
@@ -422,6 +422,20 @@ class Dashboard:
         self._strikes_at = 0.0
         self.q15: list[list] = []     # [t, yes_bid, yes_ask] for the current 15-minute contract
         self._quotes_at = 0.0
+        self._memo: dict[str, tuple[float, bytes]] = {}   # answer cache: several open tabs share one read of the logs
+        self._memo_lock = threading.Lock()
+
+    def cached(self, key: str, ttl: float, make) -> bytes:
+        """JSON bytes of make(), reused for `ttl` seconds: data.json is asked for every 2 s by every open tab and
+        history.json every minute, and each answer re-reads every bot's logs, so the reads are shared."""
+        now = time.time()
+        with self._memo_lock:
+            hit = self._memo.get(key)
+            if hit and now - hit[0] < ttl:
+                return hit[1]
+            body = json.dumps(make()).encode()
+            self._memo[key] = (now, body)
+            return body
 
     def history(self, res: int = 5) -> dict:
         """Price history from the breakdown bot's hourly logs (closed hours are cached)."""
@@ -615,7 +629,7 @@ class Dashboard:
                 self.levels.update(time.time(), live)
             except Exception as e:
                 log.warning("levels: %s", e)
-            time.sleep(15)
+            time.sleep(5)   # back-fill after a restart: at most 2 s of work in every 5, so the page keeps answering
 
     def loop(self, every: float = 2.0):
         while True:
@@ -736,9 +750,16 @@ def make_handler(dash: Dashboard, token: str):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Cache-Control", "no-store")
+            # history.json grows by about 0.4 MB a day (5-second prices); gzip cuts it to roughly a quarter
+            if len(body) > 20000 and "gzip" in self.headers.get("Accept-Encoding", ""):
+                body = gzip.compress(body, compresslevel=3)
+                self.send_header("Content-Encoding", "gzip")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):   # the browser gave up on this request
+                pass
 
         def do_GET(self):
             # ?v=range5 shows the same chart with the 5-account bot's trades (embedded at the top of /range5/)
@@ -748,10 +769,12 @@ def make_handler(dash: Dashboard, token: str):
             if self.path == root:
                 self._send(200, page, "text/html; charset=utf-8")
             elif self.path == root + "history.json":
-                h = dash.history()
-                if r5:
-                    h["range"], h["buys"] = range5_events(dash.logs["range5"]), []
-                self._send(200, json.dumps(h).encode(), "application/json")
+                def make():
+                    h = dash.history()
+                    if r5:
+                        h["range"], h["buys"] = range5_events(dash.logs["range5"]), []
+                    return h
+                self._send(200, dash.cached("history5" if r5 else "history", 20, make), "application/json")
             elif self.path.startswith(root + "levels.json"):
                 since = 0
                 if "?since=" in self.path:
@@ -761,11 +784,11 @@ def make_handler(dash: Dashboard, token: str):
                         since = 0
                 self._send(200, json.dumps(dash.levels.since(since)).encode(), "application/json")
             elif self.path == root + "data.json":
-                self._send(200, json.dumps(dash.data()).encode(), "application/json")
+                self._send(200, dash.cached("data", 1, dash.data), "application/json")
             elif self.path == root + "range5/":
                 self._send(200, page5, "text/html; charset=utf-8")
             elif self.path == root + "range5/data.json":
-                self._send(200, json.dumps(dash.range5()).encode(), "application/json")
+                self._send(200, dash.cached("range5", 2, dash.range5), "application/json")
             elif self.path == root + "range5":
                 self.send_response(301)
                 self.send_header("Location", root + "range5/")
@@ -782,12 +805,16 @@ def make_handler(dash: Dashboard, token: str):
 
 def serve(port: int, token: str, logs: dict[str, Path]):
     dash = Dashboard(logs, os.environ.get("KALSHI_KEY_ID"), os.environ.get("KALSHI_KEY_FILE"))
-    dash.warm_up(time.time())
-    dash.poll()
-    threading.Thread(target=dash.loop, daemon=True).start()
-    threading.Thread(target=dash.level_loop, daemon=True).start()
+    # listen first, so the page answers (and shows "connecting") while the two-hour BRTI warm-up runs
     srv = ThreadingHTTPServer(("0.0.0.0", port), make_handler(dash, token))
+    srv.daemon_threads = True
     log.info("live chart on port %d", port)
+
+    def start():
+        dash.warm_up(time.time())
+        dash.loop()
+    threading.Thread(target=start, daemon=True).start()
+    threading.Thread(target=dash.level_loop, daemon=True).start()
     srv.serve_forever()
 
 
@@ -887,7 +914,7 @@ function acol(r,kind){const c=ACOL[r.acct]||[120,120,120],m=kind==='light'?c.map
 const ZOOMS=[2,4,8,16,32,64,128,256,512];let zi=6;  // pixels per 15 minutes
 let follow=true;
 const $=id=>document.getElementById(id);
-const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let CSSM={};const css=n=>CSSM[n]||(CSSM[n]=getComputedStyle(document.documentElement).getPropertyValue(n).trim());
 // all times shown in US Eastern time (EST/EDT handled by the browser)
 const TZ='America/New_York';
 const fHM=new Intl.DateTimeFormat('en-US',{timeZone:TZ,hour:'numeric',minute:'2-digit',hour12:true});
@@ -914,25 +941,34 @@ function avg60(tL,tR){let a=0;while(a<P.length&&P[a][0]<tL-120)a++;const out=[];
  for(let i=a;i<P.length&&P[i][0]<=tR+60;i++){sum+=P[i][1];n++;while(j<i&&P[j][0]<=P[i][0]-60){sum-=P[j][1];n--;j++}
   if(P[i][0]>=tL-60)out.push([P[i][0],P[i][0]-P[j][0]>=40||i-j>=50?sum/n:null])}return out}
 function merge(pts){if(!pts.length)return;const last=P.length?P[P.length-1][0]:0;for(const p of pts)if(p[0]>last)P.push(p)}
-async function loadHistory(){try{const r=await fetch('history.json'+QS,{cache:'no-store'});H=await r.json();
+let HV=0;   // bumps on each new history, so the trade table is rebuilt only then
+async function loadHistory(){try{H=await get('history.json'+QS,30000);HV++;
  H.prices=H.prices.filter(p=>p[0]<=Date.now()/1000+3600);const live=P.filter(p=>p[0]>(H.prices.length?H.prices[H.prices.length-1][0]:0));P=H.prices.concat(live);layout()}catch(e){}}
 let LVR=[];
-async function loadLevels(){try{const since=LVR.length?LVR[LVR.length-1][0]:0;const r=await fetch('levels.json?since='+since,{cache:'no-store'});
- const add=await r.json();if(add.length){LVR=LVR.concat(add);draw()}}catch(e){}}
-async function tick(){try{const r=await fetch('data.json',{cache:'no-store'});D=await r.json();merge(D.prices);
- if(!H)await loadHistory();layout()}catch(e){$('err').textContent='connection lost, retrying'}}
+async function loadLevels(){try{const since=LVR.length?LVR[LVR.length-1][0]:0;const add=await get('levels.json?since='+since,15000);
+ if(add.length){LVR=LVR.concat(add);draw()}}catch(e){}}
+// fetch with a time limit, so a slow or restarting server can't leave a request hanging for minutes
+function get(url,ms){const c=new AbortController(),k=setTimeout(()=>c.abort(),ms);
+ return fetch(url,{cache:'no-store',signal:c.signal}).then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).finally(()=>clearTimeout(k))}
+let lastOK=0;
+async function tick(){try{D=await get('data.json',8000);merge(D.prices);lastOK=Date.now();
+ if(!H)await loadHistory();layout();panels()}catch(e){const ago=lastOK?Math.round((Date.now()-lastOK)/1000):null;
+  $('err').textContent='connection lost, retrying'+(ago!=null?` (last update ${ago}s ago)`:'')}
+ setTimeout(tick,2000)}   // the next request only after this one has finished or timed out
 function layout(){
  if(!D)return;const [T0,T1]=range();const w=sc.clientWidth;
  const total=Math.max(w,(T1-T0)*pps()+90);$('inner').style.width=total+'px';$('stick').style.width=w+'px';
  if(follow)sc.scrollLeft=total;syncSlider();draw()}
-sc.addEventListener('scroll',()=>{follow=sc.scrollLeft+sc.clientWidth>=sc.scrollWidth-30;syncSlider();draw()});
+let raf=0;const drawSoon=()=>{if(!raf)raf=requestAnimationFrame(()=>{raf=0;draw()})};
+sc.addEventListener('scroll',()=>{follow=sc.scrollLeft+sc.clientWidth>=sc.scrollWidth-30;syncSlider();drawSoon()});
 // time slider: 0 = start of the history, 1000 = now
 const sl=$('slider');let slDrag=false;
 function syncSlider(){if(slDrag)return;const m=sc.scrollWidth-sc.clientWidth;sl.value=m>0?Math.round(sc.scrollLeft/m*1000):1000}
-sl.addEventListener('input',()=>{slDrag=true;const m=sc.scrollWidth-sc.clientWidth;sc.scrollLeft=sl.value/1000*m;follow=sl.value>=999;draw()});
+sl.addEventListener('input',()=>{slDrag=true;const m=sc.scrollWidth-sc.clientWidth;sc.scrollLeft=sl.value/1000*m;follow=sl.value>=999;drawSoon()});
 sl.addEventListener('change',()=>{slDrag=false});
 function zoom(d){if(!D)return;const [T0,T1]=range();
- if(d<0&&(T1-T0)*pps()+90<=sc.clientWidth)return;  // the whole history is already on screenconst mid=T0+(sc.scrollLeft+sc.clientWidth/2)/pps();
+ if(d<0&&(T1-T0)*pps()+90<=sc.clientWidth)return;  // the whole history is already on screen
+ const mid=T0+(sc.scrollLeft+sc.clientWidth/2)/pps();
  zi=Math.max(0,Math.min(ZOOMS.length-1,zi+d));layout();if(!follow)sc.scrollLeft=(mid-T0)*pps()-sc.clientWidth/2;draw()}
 $('zin').onclick=()=>zoom(1);$('zout').onclick=()=>zoom(-1);
 $('back').onclick=()=>{follow=false;sc.scrollLeft-=3600*pps()};
@@ -959,8 +995,14 @@ let showLv=true;let showTl=true;$('tlbtn').onclick=()=>{showTl=!showTl;$('tlbtn'
 // (longest on ties). Resistance mirrors with falling swing highs. Drawn until the first print $5 through it
 // (marked ×) or until the next swing point takes over.
 const TLN=300,TLTOL=15,TLB=5,TLSPAN=4*3600;let TL=[],TLkey='';
-function trendLines(){if(P.length<3)return TL;const key=P[0][0]+':'+Math.floor(P[P.length-1][0]/30);  // recompute at most every 30 sif(key===TLkey)return TL;TLkey=key;
- const n=P.length,t=P.map(p=>p[0]),v=P.map(p=>p[1]);
+const lowerBound=t0=>{let a=0,b=P.length;while(a<b){const m=(a+b)>>1;P[m][0]<t0?a=m+1:b=m}return a};
+// Only the prices on screen (plus the 4 h a line can reach back) are scanned, and the result is cached:
+// recomputed when the view moves a quarter hour or every 30 s of new prices, not on every redraw.
+function trendLines(tL,tR){if(P.length<3)return TL;
+ const wL=Math.floor((tL-TLSPAN-2*TLN)/900)*900,wR=Math.ceil((tR+TLN)/900)*900;
+ const key=wL+':'+wR+':'+Math.floor(P[P.length-1][0]/30);if(key===TLkey)return TL;TLkey=key;
+ const W=P.slice(lowerBound(wL),lowerBound(wR));if(W.length<3){TL=[];return TL}
+ const n=W.length,t=W.map(p=>p[0]),v=W.map(p=>p[1]);
  // centered rolling min/max over +/-TLN seconds (two-pointer deques)
  const swing=(isLow)=>{const out=[];const dq=[];let r=0,l=0;
   for(let i=0;i<n;i++){while(r<n&&t[r]<=t[i]+TLN){while(dq.length&&(isLow?v[dq[dq.length-1]]>=v[r]:v[dq[dq.length-1]]<=v[r]))dq.pop();dq.push(r);r++}
@@ -994,15 +1036,19 @@ function timegrid(g,X,tL,tR,T,B,h,labels){
    const d=new Date(t*1000);g.fillText(day?fDay.format(d):hm(t),X(t)-14,h-6)}}}
 // right-hand gutter (same on both charts so their time axes line up): the current hour's band labels live here, clear of the price line
 const GUT=110;
-function draw(){
- if(!D)return;
- const last=P.length?P[P.length-1]:null;if(last){const a=avg60(last[0]-1,last[0]).at(-1);$('px').textContent=a&&a[1]!=null?usd(a[1]):usd(last[1]);$('pxraw').textContent=`60-s average · BRTI now ${usd(last[1])}`}
+function panels(){
+ if(!D)return;const last=P.length?P[P.length-1]:null;
+ if(last){const a=avg60(last[0]-1,last[0]).at(-1);$('px').textContent=a&&a[1]!=null?usd(a[1]):usd(last[1]);$('pxraw').textContent=`60-s average · BRTI now ${usd(last[1])}`}
  $('err').textContent=D.error||'';
  $('clock').textContent=`${last?hms(last[0]):''} ET · 15-min closes ${hm(D.session&&D.session.close_ts||0)} · hour closes ${hm(D.hour_close)}`;
- $('zinfo').textContent=`${Math.round(sc.clientWidth/pps()/3600*10)/10} hours on screen`;
- {const [a]=range();const d=new Date(a*1000);$('slL').textContent=fDay.format(d)+' '+hm(a)}
  perfTable();
  sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);sum('sfr',D.fastpush_range||{trades:0,wins:0,pnl:0});sum('sfv',D.favorite||{trades:0,wins:0,pnl:0});sum('stb',D.trend_broad||{trades:0,wins:0,pnl:0});sum('stt',D.trend_tight||{trades:0,wins:0,pnl:0});sum('smk',D.maker||{trades:0,wins:0,pnl:0});sum('sqt',D.quiet||{trades:0,wins:0,pnl:0});sum('ssq',D.squeeze||{trades:0,wins:0,pnl:0});sum('ssqm',D.squeeze_maker||{trades:0,wins:0,pnl:0});
+ tables(last?last[1]:null)}
+function draw(){
+ if(!D)return;CSSM={};
+ const last=P.length?P[P.length-1]:null;
+ $('zinfo').textContent=`${Math.round(sc.clientWidth/pps()/3600*10)/10} hours on screen`;
+ {const [a]=range();const d=new Date(a*1000);$('slL').textContent=fDay.format(d)+' '+hm(a)}
  const [T0,T1]=range(),fits=(T1-T0)*pps()+90<=sc.clientWidth;
  // when the whole history fits on screen, keep "now" at the right edge (blank before the history starts, not after now)
  const tL=fits?T1+90/pps()-sc.clientWidth/pps():T0+sc.scrollLeft/pps(),tR=tL+sc.clientWidth/pps();
@@ -1057,7 +1103,7 @@ function draw(){
   g.globalAlpha=1;g.lineWidth=2.2;g.strokeStyle=css('--target')}
  
  if(showTl){g.lineWidth=1.4;g.setLineDash([6,4]);
-  for(const l of trendLines()){if(l.t1<tL||l.t0>tR)continue;g.strokeStyle=css(l.side==='sup'?'--sup':'--res');g.globalAlpha=.9;
+  for(const l of trendLines(tL,tR)){if(l.t1<tL||l.t0>tR)continue;g.strokeStyle=css(l.side==='sup'?'--sup':'--res');g.globalAlpha=.9;
    g.beginPath();g.moveTo(X(l.t0),Y(l.v0));g.lineTo(X(l.t1),Y(l.v0+l.sl*(l.t1-l.t0)));g.stroke();
    if(l.brk){g.setLineDash([]);const bx=X(l.brk[0]),by=Y(l.v0+l.sl*(l.brk[0]-l.t0));g.beginPath();g.moveTo(bx-4,by-4);g.lineTo(bx+4,by+4);g.moveTo(bx+4,by-4);g.lineTo(bx-4,by+4);g.stroke();g.setLineDash([6,4])}}
   g.setLineDash([]);g.globalAlpha=1}
@@ -1127,7 +1173,7 @@ function draw(){
  for(const [t1,t2,yt,yb,sh] of gut){if(sh){g.fillStyle=css('--ladder');g.globalAlpha=.13;g.fillRect(w-R,yt,R,yb-yt);g.globalAlpha=1}
   const ym=(yt+yb)/2,two=t2&&yb-yt>=24;if(ym-12<T||ym+13>h-B)continue;g.fillStyle=css('--ladder-t');g.fillText(t1,w-R+5,two?ym-1.5:ym+3.5);if(two)g.fillText(t2,w-R+5,ym+10.5)}
  g.restore();
- plchart(tL,tR);tables(last?last[1]:null);
+ plchart(tL,tR);
 }
 // one shape per bot: Range circle, Breakdown triangle, Fast push square, Fast push on range bands diamond
 function marker(g,bot,x,y,col){g.fillStyle=col;g.strokeStyle=css('--card');g.lineWidth=1.5;g.beginPath();
@@ -1146,7 +1192,7 @@ const BOTS=[['Total','--line'],['Range','--yes'],['Breakdown','--no'],['Fast pus
 function plchart(tL,tR){
  const [g,w]=setup($('pl'),240),h=240,L=66,R=GUT,T=8,B=22;
  const X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
- const pts=D.pnl.map(r=>({...r,t:tsOf(r.time_utc)}));
+ if(!D._pts)D._pts=D.pnl.map(r=>({...r,t:tsOf(r.time_utc)}));const pts=D._pts;
  const [T0]=range();const series={},run={};for(const [b] of BOTS){series[b]=[[T0,0]];run[b]=0}
  for(const p of pts){run[p.bot]+=p.pnl;run.Total+=p.pnl;series[p.bot].push([p.t,run[p.bot]]);series.Total.push([p.t,run.Total])}
  for(const [b] of BOTS){const s=series[b];s.push([D.now,s[s.length-1][1]])}
@@ -1195,8 +1241,8 @@ function q15(){const R=D.q15||[],s=D.session||{};
   const da=a[3]-a[2],db=b[3]-b[2];g.strokeStyle=dcol(db*100);g.beginPath();g.moveTo(X(a[0]),Y(da));g.lineTo(X(b[0]),Y(db));g.stroke()}
  g.globalAlpha=1;
  line(2,css('--yes'),[]);line(3,css('--fg'),[4,3])}
-let TSIG='';
-function trades(){if(!H)return;const sig=JSON.stringify([H.range,H.buys]);if(sig===TSIG)return;TSIG=sig;
+let TSIG=-1;
+function trades(){if(!H||HV===TSIG)return;TSIG=HV;
  const R=[];
  for(const r of H.range||[])R.push({t:r.t,bot:r.bot||'Range',mkt:`${r.lo==null?'':usd(r.lo)}–${r.hi==null?'':usd(r.hi+0.01).slice(1)} · ${hm(r.close)}${r.bot==='FP range'&&r.level?' · '+r.level:''}`,
   side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl,cost:r.cost});
@@ -1236,6 +1282,6 @@ function tables(px){q15();trades();
  if(!D.buys.length)rows+=`<tr><td colspan="6" class="mut">No buys this session${s.strike?' (strike '+usd(s.strike)+')':''}. The breakdown and fast-push bots only buy in the last 1–3 minutes; the squeeze bots buy after a Bollinger band break.</td></tr>`;
  $('pos15').innerHTML=rows;
 }
-tick();setInterval(tick,2000);setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
+tick();setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
 </script></body></html>
 """

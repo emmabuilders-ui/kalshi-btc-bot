@@ -75,6 +75,13 @@ export DEBIAN_FRONTEND=noninteractive
 [ -n "${SKIP_APT:-}" ] || apt-get update -qq
 [ -n "${SKIP_APT:-}" ] || apt-get install -y -qq git python3 python3-venv python3-pip >/dev/null
 
+# 13 Python processes on a 1 GB droplet run close to its memory; without swap the kernel kills one when it runs out,
+# which shows up as an unexplained restart (and, for the chart, as "connection lost" in the browser).
+if [ "$(swapon --show --noheadings | wc -l)" = 0 ] && [ ! -f /swapfile ]; then
+  fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap -q /swapfile && swapon /swapfile \
+    && echo '/swapfile none swap sw 0 0' >> /etc/fstab && echo "Added a 1 GB swap file." || echo "Could not add a swap file; carrying on."
+fi
+
 id "$USER_" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$USER_"
 chown -R "$USER_" "$CONF"; chmod 600 "$CONF"/*
 git config --global --add safe.directory "*"
@@ -569,7 +576,7 @@ systemctl restart kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi
 
 cat > /usr/local/bin/kbot <<'EOF'
 #!/usr/bin/env bash
-# kbot status | log | update | stop | start | chart | touch COIN TF BARS [TARGET]
+# kbot status | log | health | update | stop | start | chart | touch COIN TF BARS [TARGET]
 case "${1:-status}" in
   status) for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-dash; do systemctl --no-pager status $u | head -3; done
           echo "-- 15-min breakdown bot"; cat /opt/kalshi-logs/breakdown/status.json 2>/dev/null
@@ -589,11 +596,17 @@ case "${1:-status}" in
             "https://raw.githubusercontent.com/emmabuilders-ui/kalshi-btc-bot/${BRANCH:-main}/deploy/setup.sh" | bash ;;
   stop)   systemctl stop kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-dash ;;
   start)  systemctl start kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-dash ;;
+  health) echo "-- memory (MB)"; free -m; echo; echo "-- load (1, 5, 15 min) and uptime"; uptime
+          echo; echo "-- restarts per service since boot"
+          for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-dash; do printf '%-24s %s\n' "$u" "$(systemctl show -p NRestarts --value $u)"; done
+          echo; echo "-- processes the kernel killed for lack of memory (last 7 days)"
+          journalctl -k --since "-7d" --no-pager 2>/dev/null | grep -i "out of memory\|oom-kill" | tail -10 || true
+          echo; echo "-- chart service, last 15 log lines"; journalctl -u kalshi-dash -n 15 --no-pager ;;
   chart)  IP=$(curl -fsS -4 https://api.ipify.org 2>/dev/null || hostname -I | cut -d' ' -f1); TOK=$(cat /etc/kalshi-bot/dash_token)
           echo "Live chart: http://$IP:8080/$TOK/"
           echo "5-account range bot chart: http://$IP:8080/$TOK/range5/" ;;
   touch)  shift; /opt/kalshi-btc-bot/.venv/bin/python -m kalshi_btc_bot touch "$@" ;;
-  *) echo "usage: kbot status|log|update|stop|start|chart|touch COIN TF BARS [TARGET]" ;;
+  *) echo "usage: kbot status|log|health|update|stop|start|chart|touch COIN TF BARS [TARGET]" ;;
 esac
 EOF
 chmod +x /usr/local/bin/kbot
@@ -614,5 +627,5 @@ journalctl -u kalshi-squeeze -n 8 --no-pager || true
 journalctl -u kalshi-squeeze-maker -n 8 --no-pager || true
 echo
 echo "Done. All the paper traders and the live chart are running and restart by themselves after a reboot."
-echo "Commands:  kbot status   kbot log   kbot update   kbot chart   kbot touch BTC 1h 6 +1%"
+echo "Commands:  kbot status   kbot log   kbot health   kbot update   kbot chart   kbot touch BTC 1h 6 +1%"
 kbot chart
