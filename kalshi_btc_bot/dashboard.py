@@ -880,12 +880,12 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><b style="color:var(--sup)">╌</b> rising support / <b style="color:var(--res)">╌</b> falling resistance trend lines (5-min swings), × = break</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin: 60-second BRTI average (black, what Kalshi settles on), BRTI each second (light gray), and every trade</div><canvas id="c"></canvas>
+<div style="display:flex;align-items:center;gap:10px;margin-top:6px"><span class="mut" id="slL" style="font-size:12px;white-space:nowrap"></span>
+<input type="range" id="slider" min="0" max="1000" value="1000" style="flex:1;accent-color:var(--ladder-t);height:22px" aria-label="Move through the history">
+<span class="mut" id="slR" style="font-size:12px;white-space:nowrap">now</span></div>
+<div class="mut" style="font-size:12px;margin:2px 0 6px">Drag the slider (or scroll sideways) to move through the full history. Both graphs move together.</div>
 <div class="nor5"><div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas></div>
 </div></div></div>
-<div style="display:flex;align-items:center;gap:10px;margin-top:6px"><span class="mut" id="slL" style="font-size:12px;white-space:nowrap"></span>
-<input type="range" id="slider" min="0" max="1000" value="1000" style="flex:1;accent-color:var(--ladder-t);height:22px">
-<span class="mut" id="slR" style="font-size:12px;white-space:nowrap">now</span></div>
-<div class="mut" style="font-size:12px;margin-top:2px">Drag the slider (or scroll sideways) to move through the full history. Both graphs move together.</div>
 </div>
 <div class="nor5">
 <div class="card scroll" style="margin-top:12px"><b>Performance by bot</b> <span class="mut">settled trades only · win % minus price is the edge; EV is profit per contract after fees</span><table id="perf"></table></div>
