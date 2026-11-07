@@ -1,15 +1,4 @@
 {
  "orders": [],
- "missed": [
-  {
-   "ticker": "KXBTC-26NOV0622-B75950",
-   "close_ts": 1794020400,
-   "time_utc": "2026-11-07 02:42:00",
-   "bid": 0.68,
-   "ask_at_post": 0.69,
-   "taker_avg": 0.69,
-   "taker_n": 20,
-   "mins_left": 18
-  }
- ]
+ "missed": []
 }
