@@ -157,6 +157,26 @@ be meaningful.
 * `events.jsonl`: every signal (with indicator values and the reason for any rejection),
   order, fill, trailing-stop activation, exit and settlement, with time remaining
 
+## TradeStation market data (read-only)
+
+`kalshi_btc_bot/tradestation.py` pulls stock, ETF, futures and option data straight from
+TradeStation's v3 API so nothing has to be downloaded by hand. It needs three environment
+variables, never written into code or chat: `TS_CLIENT_ID`, `TS_CLIENT_SECRET` (issued by
+TradeStation Client Services) and `TS_REFRESH_TOKEN` (from the one-time browser login,
+`python examples/ts_login.py`). The token carries the MarketData and ReadAccount scopes only;
+no order or account-history endpoints are called.
+
+```python
+from kalshi_btc_bot.tradestation import TradeStation
+ts = TradeStation()
+ts.bars("SPY", 5, "Minute", barsback=500)          # OHLCV, index in ET
+ts.bars("@ES", unit="Daily", start="2024-01-01")   # futures continuous contract
+ts.quotes(["SPY", "QQQ"])
+ts.option_expirations("SPY"); ts.option_chain("SPY", "2026-12-18", strike_proximity=10)
+```
+
+Intraday requests are capped at 57,600 bars each; `bars()` pages through the cap automatically.
+
 ## Known limits
 
 * The Kalshi and exchange clients (`live_data.py`) follow the public APIs but could not be
