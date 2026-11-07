@@ -32,9 +32,9 @@ import json
 import logging
 import math
 import os
+import random
 import resource
 import signal
-import subprocess
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -44,6 +44,8 @@ from pathlib import Path
 
 import numpy as np
 import requests
+
+from .logpush import git_push_logs
 
 log = logging.getLogger("kalshi_btc_bot")
 
@@ -194,12 +196,18 @@ class KalshiClient:
         return {"KALSHI-ACCESS-KEY": self.key_id, "KALSHI-ACCESS-TIMESTAMP": ts,
                 "KALSHI-ACCESS-SIGNATURE": base64.b64encode(sig).decode()}
 
-    def get(self, path: str, retries: int = 4, **params):
+    def get(self, path: str, retries: int = 4, wait: float = 0.5, **params):
+        """Signed GET. On 429 (rate limit) waits wait*(k+1) seconds plus a random part, so the dozen bots
+        on one key that all ask at the same moment after a reboot spread out; a Retry-After header wins."""
         for k in range(retries):
             r = self.s.get(KALSHI + API + path, params=params or None,
                            headers=self._sign("GET", API + path), timeout=self.timeout)
             if r.status_code == 429:
-                time.sleep(0.5 * (k + 1))
+                try:
+                    pause = float(r.headers.get("Retry-After", ""))
+                except ValueError:
+                    pause = wait * (k + 1)
+                time.sleep(min(60.0, pause) + random.uniform(0, wait))
                 continue
             r.raise_for_status()
             return r.json()
@@ -235,7 +243,7 @@ class KalshiClient:
     def brti_hour(self, hour_ts: int) -> dict[int, float]:
         """Real BRTI, one value per second, for the hour starting at hour_ts (as far as published)."""
         stamp = datetime.fromtimestamp(hour_ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        j = self.get("/cfbenchmarks/history/values", retries=10, id="BRTI", timespan="HOUR", timestamp=stamp)
+        j = self.get("/cfbenchmarks/history/values", retries=10, wait=3.0, id="BRTI", timespan="HOUR", timestamp=stamp)
         return {p["time"] // 1000: float(p["value"]) for p in j["data"]["payload"] if p["time"] % 1000 == 0}
 
 
@@ -421,14 +429,9 @@ class LateBreakdownPaper:
             return
         self._last_push = now
         try:
-            git = ["git", "-C", str(self.out)]
-            subprocess.run(git + ["add", "-A"], check=True, capture_output=True, timeout=60)
-            if self._price_day:  # the open hour's file is still being written
-                subprocess.run(git + ["reset", "-q", "--", f"prices/{self._price_day}.csv.gz"],
-                               capture_output=True, timeout=60)
-            subprocess.run(git + ["commit", "-qm", f"paper log {datetime.now(timezone.utc):%Y-%m-%d %H:%M}"],
-                           capture_output=True, timeout=60)
-            subprocess.run(git + ["push", "-q", "origin", "HEAD"], check=True, capture_output=True, timeout=120)
+            # the open hour's price file is still being written, so it stays out of the commit
+            git_push_logs(self.out, f"paper log {datetime.now(timezone.utc):%Y-%m-%d %H:%M}",
+                          [f"prices/{self._price_day}.csv.gz"] if self._price_day else [])
         except Exception as e:
             log.warning("log push failed: %s", e)
 
@@ -438,10 +441,18 @@ class LateBreakdownPaper:
         if not self.k.key:
             raise SystemExit("A Kalshi API key is needed to load BRTI history (set KALSHI_KEY_ID / KALSHI_KEY_FILE).")
         h0 = (now - WARMUP) // 3600 * 3600
+        missed = 0
         for h in range(h0, now // 3600 * 3600 + 1, 3600):
-            self.series.brti.update(self.k.brti_hour(h))
-        log.info("warm-up: %d BRTI seconds loaded, latest %s", len(self.series.brti),
-                 datetime.fromtimestamp(max(self.series.brti), timezone.utc).isoformat())
+            try:
+                self.series.brti.update(self.k.brti_hour(h))
+            except Exception as e:   # e.g. still rate-limited: a thin history beats a crash and a restart loop
+                missed += 1
+                log.warning("BRTI history %s failed: %s", datetime.fromtimestamp(h, timezone.utc).isoformat(), e)
+        if not self.series.brti:
+            raise RuntimeError("no BRTI history could be loaded")
+        log.info("warm-up: %d BRTI seconds loaded, latest %s%s", len(self.series.brti),
+                 datetime.fromtimestamp(max(self.series.brti), timezone.utc).isoformat(),
+                 f", {missed} hours missing" if missed else "")
 
     def poll_brti(self) -> int | None:
         """Fetch live BRTI; returns the latest second available."""
