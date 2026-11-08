@@ -871,7 +871,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 </style></head><body><div class="wrap">
 <div class="top"><h1 class="nor5">Paper bots, live</h1><a class="nor5 navbtn" href="range5/">5-account range bot →</a><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
-<div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button>
+<div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button><button id="bbbtn" aria-pressed="false">Show Bollinger bands</button><button id="kcbtn" aria-pressed="false">Show Keltner channels</button><select id="bandk" aria-label="Bar length for the bands"><option value="5">5-min bars</option><option value="15">15-min bars</option><option value="60">60-min bars</option></select>
 <span class="mut" id="zinfo"></span></div>
 <div class="bar" id="filters" aria-label="Show or hide each bot's trades on the chart"></div>
 <div class="card">
@@ -1146,6 +1146,7 @@ function draw(){
   for(const x of xs){for(let k=0;k<=Math.ceil((ymax-ymin)/2)+1;k++){const yy=Math.min(ymax,Math.max(ymin,cx+(k%2?1:-1)*Math.ceil(k/2)*2-th/2+th/2));
     const sc=over(x,yy,tw,th);if(!best||sc<best[2])best=[x,yy,sc];if(sc===0)break}if(best[2]===0)break}
   return drawBox(best[0],best[1],tw,th,txt,col)};
+ if(BBON||KCON)drawBands(g,X,Y,tL,tR,L,w,R);
  const full=ZOOMS[zi]>=128,short0=ZOOMS[zi]>=32;
  for(const r of rng){const y=at(r.t)??(r.lo+r.hi)/2;const x=X(r.t),yd=Y(y),col=R5?acol(r,'dark'):css(st[r.status]),mid=Y((r.lo+r.hi)/2),short=short0&&x>=L&&x<=w-R;
   const res=r.status==='open'?'OPEN':r.status.toUpperCase()+' '+money(r.pnl),ac=R5?`#${r.acct} `:'';
@@ -1252,6 +1253,43 @@ function q15(){const R=D.q15||[],s=D.session||{};
   const da=a[3]-a[2],db=b[3]-b[2];g.strokeStyle=dcol(db*100);g.beginPath();g.moveTo(X(a[0]),Y(da));g.lineTo(X(b[0]),Y(db));g.stroke()}
  g.globalAlpha=1;
  line(2,css('--yes'),[]);line(3,css('--fg'),[4,3])}
+// Bollinger bands (20 bars, 2 sd) and Keltner channels (20-bar EMA +/- 1.5 x 20-bar average true range), same recipe as the squeeze bots.
+// Built from the dashboard's price series (5-second points), so high/low are the highest/lowest points, not every second.
+// Each completed bar's bands are drawn as a step across the NEXT bar, the way the bots use them.
+let BBON=false,KCON=false,BANDK=5;
+try{BBON=localStorage.getItem('bbOn')==='1';KCON=localStorage.getItem('kcOn')==='1';BANDK=+localStorage.getItem('bandK')||5}catch(e){}
+const BC={};
+function bandsFor(k){const n=P.length,last=n?P[n-1][0]:0,key=k+':'+Math.floor(last/(60*k))+':'+(n?P[0][0]:0);
+ if(BC[k]&&BC[k].key===key)return BC[k].v;
+ const sz=60*k,bars=[];let cur=null;
+ for(let i=0;i<n;i++){const t=P[i][0],v=P[i][1],b=Math.floor(t/sz);
+  if(!cur||cur.b!==b){cur={b,c:v,h:v,l:v};bars.push(cur)}else{cur.c=v;if(v>cur.h)cur.h=v;if(v<cur.l)cur.l=v}}
+ if(bars.length&&bars[bars.length-1].b===Math.floor(last/sz))bars.pop();   // the bar still forming has no bands yet
+ const N=20,out=[];let ema=null,sumC=0,sumC2=0,sumTR=0;const trs=[];
+ for(let i=0;i<bars.length;i++){const b=bars[i],pc=i?bars[i-1].c:null;
+  const tr=pc==null?b.h-b.l:Math.max(b.h-b.l,Math.abs(b.h-pc),Math.abs(b.l-pc));
+  ema=ema==null?b.c:ema+(b.c-ema)*2/(N+1);
+  sumC+=b.c;sumC2+=b.c*b.c;sumTR+=tr;trs.push(tr);
+  if(i>=N){const o=bars[i-N];sumC-=o.c;sumC2-=o.c*o.c;sumTR-=trs[i-N]}
+  if(i>=N){const m=sumC/N,sd=Math.sqrt(Math.max(0,sumC2/N-m*m)),atr=sumTR/N;
+   out.push({t0:(bars[i].b+1)*sz,t1:(bars[i].b+2)*sz,bu:m+2*sd,bl:m-2*sd,ku:ema+1.5*atr,kl:ema-1.5*atr,on:m+2*sd<ema+1.5*atr&&m-2*sd>ema-1.5*atr})}}
+ BC[k]={key,v:out};return out}
+function drawBands(g,X,Y,tL,tR,L,w,R){const k=BANDK,bs=bandsFor(k).filter(b=>b.t1>=tL&&b.t0<=tR);if(!bs.length)return;
+ g.save();g.beginPath();g.rect(L,0,w-L-R,4000);g.clip();g.lineWidth=1.4;
+ const line=(u,lo,col)=>{for(const f of [u,lo]){g.strokeStyle=col;g.beginPath();let px=null;
+   for(const b of bs){const x0=X(b.t0),x1=X(b.t1),y=Y(b[f]);if(px===null)g.moveTo(x0,y);else g.lineTo(x0,y);g.lineTo(x1,y);px=x1}g.stroke()}};
+ g.setLineDash([]);if(KCON)line('ku','kl','#e08a1e');
+ g.setLineDash(KCON?[5,3]:[]);if(BBON)line('bu','bl','#4a90d9');
+ g.setLineDash([]);
+ if(BBON&&KCON){g.fillStyle='#8a4fd0';for(const b of bs)if(b.on){const x0=X(b.t0),x1=X(b.t1);g.globalAlpha=.9;g.fillRect(x0,4,Math.max(1,x1-x0),3)}g.globalAlpha=1}   // purple tick along the top = squeeze on
+ g.restore()}
+function syncBandBtns(){const a=$('bbbtn'),b=$('kcbtn');a.textContent=(BBON?'Hide':'Show')+' Bollinger bands';b.textContent=(KCON?'Hide':'Show')+' Keltner channels';
+ a.setAttribute('aria-pressed',BBON);b.setAttribute('aria-pressed',KCON);$('bandk').value=String(BANDK);$('bandk').style.display=(BBON||KCON)?'':'none'}
+const bandSave=()=>{try{localStorage.setItem('bbOn',BBON?'1':'0');localStorage.setItem('kcOn',KCON?'1':'0');localStorage.setItem('bandK',String(BANDK))}catch(e){}};
+$('bbbtn').onclick=()=>{BBON=!BBON;bandSave();syncBandBtns();draw()};
+$('kcbtn').onclick=()=>{KCON=!KCON;bandSave();syncBandBtns();draw()};
+$('bandk').onchange=e=>{BANDK=+e.target.value;bandSave();draw()};
+syncBandBtns();
 let TSIG=-1,TROWS=[],HL=null,hlTimer=0;
 // click a row in the trades table: bring that trade's marker into view on the chart and ring it for a few seconds
 $('trades').addEventListener('click',e=>{const tr=e.target.closest('tr.trrow');if(!tr||!D)return;const r=TROWS[+tr.dataset.i];if(!r)return;
