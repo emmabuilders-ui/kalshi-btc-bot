@@ -329,6 +329,66 @@ def hour_seconds(path: Path, h0: int) -> np.ndarray:
     return a
 
 
+class QuoteTape:
+    """Kalshi YES/NO asks over time, so the chart can show them for the past too: [t, 15-min YES bid, 15-min YES ask,
+    hourly YES bid, hourly YES ask] every 10 seconds, where 'hourly' is the range band BTC is inside. Kept in a small
+    CSV in the home folder (about 0.25 MB a day). Only the last 14 days are kept in memory and shown on the chart; at
+    server start older rows move to an archive file next to it (~/.kalshi-dash-quotes-archive.csv) and are never deleted."""
+    KEEP, EVERY = 14 * 86400, 10
+
+    def __init__(self, path: Path):
+        self.path, self.rows, self.last = path, [], 0.0
+        self.times: list[float] = []
+        try:
+            cut, old = time.time() - self.KEEP, []
+            for line in path.read_text().splitlines():
+                try:
+                    v = [float(x) if x else None for x in line.split(",")]
+                except ValueError:
+                    continue
+                if len(v) == 5 and v[0]:
+                    (self.rows if v[0] >= cut else old).append(v)
+            if old:      # archive first, so a crash between the two writes can only duplicate rows, never lose them
+                with path.with_name(path.stem + "-archive.csv").open("a") as f:
+                    f.write("".join(self._line(r) for r in old))
+                path.write_text("".join(self._line(r) for r in self.rows))
+            if self.rows:
+                self.last = self.rows[-1][0]
+            self.times = [r[0] for r in self.rows]
+        except OSError:
+            pass
+
+    @staticmethod
+    def _line(r) -> str:
+        return ",".join("" if x is None else (str(int(x)) if i == 0 else f"{x:.4f}") for i, x in enumerate(r)) + "\n"
+
+    def add(self, now: float, q15: list | None, quotes: dict):
+        if now - self.last < self.EVERY:
+            return
+        hb = ha = None
+        px = quotes.get("price") if quotes else None
+        for b in (quotes or {}).get("bands", []):
+            lo, hi = b.get("lo"), b.get("hi")
+            if px is not None and (lo is None or px >= lo) and (hi is None or px < hi + 0.01):
+                hb, ha = b.get("yes_bid"), b.get("yes_ask")
+                break
+        row = [int(now), q15[1] if q15 else None, q15[2] if q15 else None, hb, ha]
+        if all(x is None for x in row[1:]):
+            return
+        self.last = now
+        self.rows.append(row)
+        self.times.append(row[0])
+        try:
+            with self.path.open("a") as f:
+                f.write(self._line(row))
+        except OSError:
+            pass
+
+    def since(self, t: int) -> list:
+        import bisect
+        return self.rows[bisect.bisect_right(self.times, t):]
+
+
 class LevelTracker:
     """Support and resistance recalculated every minute from the price history (the same 13 kinds of
     level the fast-push bot uses, measured from the price at that minute). Results are cached on disk."""
@@ -427,6 +487,7 @@ class Dashboard:
         self.model = RangeModel()
         self.levels = LevelTracker(logs["breakdown"] / "prices", Path.home() / ".kalshi-dash-levels.json")
         self.quotes: dict = {}
+        self.tape = QuoteTape(Path.home() / ".kalshi-dash-quotes.csv")
         self.strikes: dict[int, float] = {}   # 15-minute session open -> Kalshi target (strike)
         self._strikes_at = 0.0
         self.q15: list[list] = []     # [t, yes_bid, yes_ask] for the current 15-minute contract
@@ -621,6 +682,7 @@ class Dashboard:
             self._quotes_at = now
             try:
                 self.quotes = self.range_quotes(now)
+                self.tape.add(now, self.q15[-1] if self.q15 else None, self.quotes)
             except Exception as e:
                 self.err = f"range prices: {e}"
         s = self.session
@@ -792,6 +854,14 @@ def make_handler(dash: Dashboard, token: str):
                     except ValueError:
                         since = 0
                 self._send(200, json.dumps(dash.levels.since(since)).encode(), "application/json")
+            elif self.path.startswith(root + "quotes.json"):
+                since = 0
+                if "?since=" in self.path:
+                    try:
+                        since = int(self.path.split("?since=")[1])
+                    except ValueError:
+                        since = 0
+                self._send(200, json.dumps(dash.tape.since(since)).encode(), "application/json")
             elif self.path == root + "data.json":
                 self._send(200, dash.cached("data", 1, dash.data), "application/json")
             elif self.path == root + "range5/":
@@ -856,6 +926,7 @@ canvas{display:block}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 td,th{padding:6px 8px;text-align:left;border-bottom:1px solid var(--grid);white-space:nowrap}
 th{font-size:12px;color:var(--mut);font-weight:600}
+.trrow{cursor:pointer}.trrow:hover td{background:var(--grid)}
 .pill{padding:2px 8px;border-radius:10px;font-weight:600;font-size:12px}
 .w{background:var(--win-bg);color:var(--win)}.l{background:var(--lose-bg);color:var(--lose)}
 .scroll{overflow-x:auto}
@@ -870,7 +941,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 </style></head><body><div class="wrap">
 <div class="top"><h1 class="nor5">Paper bots, live</h1><a class="nor5 navbtn" href="range5/">5-account range bot →</a><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
-<div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button>
+<div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button><button id="bbbtn" aria-pressed="false">Show Bollinger bands</button><button id="kcbtn" aria-pressed="false">Show Keltner channels</button><select id="bandk" aria-label="Bar length for the bands"><option value="5">5-min bars</option><option value="15">15-min bars</option><option value="60">60-min bars</option></select>
 <span class="mut" id="zinfo"></span></div>
 <div class="bar" id="filters" aria-label="Show or hide each bot's trades on the chart"></div>
 <div class="card">
@@ -880,6 +951,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><b style="color:var(--sup)">╌</b> rising support / <b style="color:var(--res)">╌</b> falling resistance trend lines (5-min swings), × = break</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin: 60-second BRTI average (black, what Kalshi settles on), BRTI each second (light gray), and every trade</div><canvas id="c"></canvas>
+<div class="nor5"><div class="lbl" style="margin-top:6px">Kalshi YES ask (up) and NO ask (down) in cents, centered on 0: 15-minute contract on top, the hourly band BTC is inside below <span class="mut" style="font-weight:400">· recorded from when this was first deployed</span></div><canvas id="qp"></canvas></div>
 <div style="display:flex;align-items:center;gap:10px;margin-top:6px"><span class="mut" id="slL" style="font-size:12px;white-space:nowrap"></span>
 <input type="range" id="slider" min="0" max="1000" value="1000" style="flex:1;accent-color:var(--ladder-t);height:22px" aria-label="Move through the history">
 <span class="mut" id="slR" style="font-size:12px;white-space:nowrap">now</span></div>
@@ -1145,6 +1217,7 @@ function draw(){
   for(const x of xs){for(let k=0;k<=Math.ceil((ymax-ymin)/2)+1;k++){const yy=Math.min(ymax,Math.max(ymin,cx+(k%2?1:-1)*Math.ceil(k/2)*2-th/2+th/2));
     const sc=over(x,yy,tw,th);if(!best||sc<best[2])best=[x,yy,sc];if(sc===0)break}if(best[2]===0)break}
   return drawBox(best[0],best[1],tw,th,txt,col)};
+ if(BBON||KCON)drawBands(g,X,Y,tL,tR,L,w,R);
  const full=ZOOMS[zi]>=128,short0=ZOOMS[zi]>=32;
  for(const r of rng){const y=at(r.t)??(r.lo+r.hi)/2;const x=X(r.t),yd=Y(y),col=R5?acol(r,'dark'):css(st[r.status]),mid=Y((r.lo+r.hi)/2),short=short0&&x>=L&&x<=w-R;
   const res=r.status==='open'?'OPEN':r.status.toUpperCase()+' '+money(r.pnl),ac=R5?`#${r.acct} `:'';
@@ -1159,6 +1232,7 @@ function draw(){
   marker(g,b.bot,x,yy,css(st[b.status]));
   if(short){const col=css(st[b.status]),ty=yy+(up?-28:28);
    const [lx,ly,tw]=label(x+12,ty,`${hm(b.t)} ${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''} ${b.level||''} → ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,col);g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yy);g.lineTo(lx>x?lx:lx+tw,ly);g.stroke();g.setLineDash([])}}
+ if(HL&&HL.until>Date.now()&&HL.t>=tL&&HL.t<=tR){const y=at(HL.t);if(y!=null){const x=X(HL.t),yy=Y(y);g.strokeStyle=css('--fg');g.lineWidth=2.5;g.beginPath();g.arc(x,yy,13,0,6.283);g.stroke();g.strokeStyle='#ffd400';g.lineWidth=1.5;g.beginPath();g.arc(x,yy,16,0,6.283);g.stroke()}}
  // live 15-min contract: Kalshi YES price, model and difference, in a small tag just right of the live price, by its target line
  const S=D.session,Q=(D.q15||[]).at(-1);
  if(S&&S.strike&&Q&&last&&S.open_ts<=tR&&S.close_ts>=tL){const yb=Q[1],ya=Q[2],m=Q[3];
@@ -1182,7 +1256,7 @@ function draw(){
  for(const [t1,t2,yt,yb,sh] of gut){if(sh){g.fillStyle=css('--ladder');g.globalAlpha=.13;g.fillRect(w-R,yt,R,yb-yt);g.globalAlpha=1}
   const ym=(yt+yb)/2,two=t2&&yb-yt>=24;if(ym-12<T||ym+13>h-B)continue;g.fillStyle=css('--ladder-t');g.fillText(t1,w-R+5,two?ym-1.5:ym+3.5);if(two)g.fillText(t2,w-R+5,ym+10.5)}
  g.restore();
- plchart(tL,tR);
+ qpanel(tL,tR);plchart(tL,tR);
 }
 // one shape per bot: Range circle, Breakdown triangle, Fast push square, Fast push on range bands diamond
 function marker(g,bot,x,y,col){g.fillStyle=col;g.strokeStyle=css('--card');g.lineWidth=1.5;g.beginPath();
@@ -1250,11 +1324,76 @@ function q15(){const R=D.q15||[],s=D.session||{};
   const da=a[3]-a[2],db=b[3]-b[2];g.strokeStyle=dcol(db*100);g.beginPath();g.moveTo(X(a[0]),Y(da));g.lineTo(X(b[0]),Y(db));g.stroke()}
  g.globalAlpha=1;
  line(2,css('--yes'),[]);line(3,css('--fg'),[4,3])}
-let TSIG=-1;
+// Bollinger bands (20 bars, 2 sd) and Keltner channels (20-bar EMA +/- 1.5 x 20-bar average true range), same recipe as the squeeze bots.
+// Built from the dashboard's price series (5-second points), so high/low are the highest/lowest points, not every second.
+// Each completed bar's bands are drawn as a step across the NEXT bar, the way the bots use them.
+let BBON=false,KCON=false,BANDK=5;
+try{BBON=localStorage.getItem('bbOn')==='1';KCON=localStorage.getItem('kcOn')==='1';BANDK=+localStorage.getItem('bandK')||5}catch(e){}
+const BC={};
+function bandsFor(k){const n=P.length,last=n?P[n-1][0]:0,key=k+':'+Math.floor(last/(60*k))+':'+(n?P[0][0]:0);
+ if(BC[k]&&BC[k].key===key)return BC[k].v;
+ const sz=60*k,bars=[];let cur=null;
+ for(let i=0;i<n;i++){const t=P[i][0],v=P[i][1],b=Math.floor(t/sz);
+  if(!cur||cur.b!==b){cur={b,c:v,h:v,l:v};bars.push(cur)}else{cur.c=v;if(v>cur.h)cur.h=v;if(v<cur.l)cur.l=v}}
+ if(bars.length&&bars[bars.length-1].b===Math.floor(last/sz))bars.pop();   // the bar still forming has no bands yet
+ const N=20,out=[];let ema=null,sumC=0,sumC2=0,sumTR=0;const trs=[];
+ for(let i=0;i<bars.length;i++){const b=bars[i],pc=i?bars[i-1].c:null;
+  const tr=pc==null?b.h-b.l:Math.max(b.h-b.l,Math.abs(b.h-pc),Math.abs(b.l-pc));
+  ema=ema==null?b.c:ema+(b.c-ema)*2/(N+1);
+  sumC+=b.c;sumC2+=b.c*b.c;sumTR+=tr;trs.push(tr);
+  if(i>=N){const o=bars[i-N];sumC-=o.c;sumC2-=o.c*o.c;sumTR-=trs[i-N]}
+  if(i>=N){const m=sumC/N,sd=Math.sqrt(Math.max(0,sumC2/N-m*m)),atr=sumTR/N;
+   out.push({t0:(bars[i].b+1)*sz,t1:(bars[i].b+2)*sz,bu:m+2*sd,bl:m-2*sd,ku:ema+1.5*atr,kl:ema-1.5*atr,on:m+2*sd<ema+1.5*atr&&m-2*sd>ema-1.5*atr})}}
+ BC[k]={key,v:out};return out}
+function drawBands(g,X,Y,tL,tR,L,w,R){const k=BANDK,bs=bandsFor(k).filter(b=>b.t1>=tL&&b.t0<=tR);if(!bs.length)return;
+ g.save();g.beginPath();g.rect(L,0,w-L-R,4000);g.clip();g.lineWidth=1.4;
+ const line=(u,lo,col)=>{for(const f of [u,lo]){g.strokeStyle=col;g.beginPath();let px=null;
+   for(const b of bs){const x0=X(b.t0),x1=X(b.t1),y=Y(b[f]);if(px===null)g.moveTo(x0,y);else g.lineTo(x0,y);g.lineTo(x1,y);px=x1}g.stroke()}};
+ g.setLineDash([]);if(KCON)line('ku','kl','#e08a1e');
+ g.setLineDash(KCON?[5,3]:[]);if(BBON)line('bu','bl','#4a90d9');
+ g.setLineDash([]);
+ if(BBON&&KCON){g.fillStyle='#8a4fd0';for(const b of bs)if(b.on){const x0=X(b.t0),x1=X(b.t1);g.globalAlpha=.9;g.fillRect(x0,4,Math.max(1,x1-x0),3)}g.globalAlpha=1}   // purple tick along the top = squeeze on
+ g.restore()}
+function syncBandBtns(){const a=$('bbbtn'),b=$('kcbtn');a.textContent=(BBON?'Hide':'Show')+' Bollinger bands';b.textContent=(KCON?'Hide':'Show')+' Keltner channels';
+ a.setAttribute('aria-pressed',BBON);b.setAttribute('aria-pressed',KCON);$('bandk').value=String(BANDK);$('bandk').style.display=(BBON||KCON)?'':'none'}
+const bandSave=()=>{try{localStorage.setItem('bbOn',BBON?'1':'0');localStorage.setItem('kcOn',KCON?'1':'0');localStorage.setItem('bandK',String(BANDK))}catch(e){}};
+$('bbbtn').onclick=()=>{BBON=!BBON;bandSave();syncBandBtns();draw()};
+$('kcbtn').onclick=()=>{KCON=!KCON;bandSave();syncBandBtns();draw()};
+$('bandk').onchange=e=>{BANDK=+e.target.value;bandSave();draw()};
+syncBandBtns();
+// YES/NO asks recorded by the server (quotes.json): [t, 15-min YES bid, ask, hourly YES bid, ask]
+let QT=[];
+async function loadQuotes(){try{const since=QT.length?QT[QT.length-1][0]:0;const add=await get('quotes.json?since='+since,15000);
+ if(add.length){QT=QT.concat(add);draw()}}catch(e){}}
+function qpanel(tL,tR){const cv=$('qp');if(!cv)return;const LH=112,h=LH*2+22,[g,w]=setup(cv,h),L=66,R=GUT,X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
+ const lane=(top,ci,name)=>{const mid=top+LH/2,sc=(LH/2-6)/100;   // 100 cents = full half-lane
+  g.strokeStyle=css('--grid2');g.lineWidth=1;g.setLineDash([]);g.beginPath();g.moveTo(L,mid+.5);g.lineTo(w-R,mid+.5);g.stroke();
+  g.setLineDash([2,4]);for(const c of [50,-50]){g.beginPath();g.moveTo(L,mid-c*sc);g.lineTo(w-R,mid-c*sc);g.stroke()}g.setLineDash([]);
+  g.fillStyle=css('--mut');g.font='10px system-ui';g.textAlign='right';for(const c of [100,50,0,-50,-100])g.fillText((c>0?'YES ':c<0?'NO ':'')+Math.abs(c)+'¢',L-4,mid-c*sc+3.5);g.textAlign='left';
+  g.fillText(name,L+4,top+11);
+  const pts=QT.filter(r=>r[0]>=tL-120&&r[0]<=tR+120&&r[ci]!=null&&r[ci+1]!=null);
+  const area=(sign,col)=>{g.fillStyle=col;g.strokeStyle=col;g.lineWidth=1.3;
+   const seg=[];let cur=[];for(const r of pts){if(cur.length&&r[0]-cur[cur.length-1][0]>120){seg.push(cur);cur=[]}cur.push(r)}if(cur.length)seg.push(cur);
+   for(const s of seg){const v=r=>sign>0?r[ci+1]:1-r[ci];
+    g.globalAlpha=.22;g.beginPath();g.moveTo(X(s[0][0]),mid);for(const r of s)g.lineTo(X(r[0]),mid-sign*v(r)*100*sc);g.lineTo(X(s[s.length-1][0]),mid);g.closePath();g.fill();
+    g.globalAlpha=1;g.beginPath();s.forEach((r,i)=>{const x=X(r[0]),y=mid-sign*v(r)*100*sc;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}};
+  // row: [t, 15-min YES bid, ask, hourly YES bid, ask]; lane ci is the bid column. YES ask = r[ci+1], NO ask = 1 - YES bid.
+  area(1,css('--yes'));area(-1,css('--no'))};
+ timegrid(g,X,tL,tR,0,18,h,true);
+ g.save();g.beginPath();g.rect(L,0,w-L-R,h-18);g.clip();
+ lane(0,1,'15-minute contract');lane(LH+4,3,'hourly band BTC is inside');
+ g.restore()}
+let TSIG=-1,TROWS=[],HL=null,hlTimer=0;
+// click a row in the trades table: bring that trade's marker into view on the chart and ring it for a few seconds
+$('trades').addEventListener('click',e=>{const tr=e.target.closest('tr.trrow');if(!tr||!D)return;const r=TROWS[+tr.dataset.i];if(!r)return;
+ const k=String(fkey(r));if(HID.has(k)){HID.delete(k);try{localStorage.setItem(HKEY,JSON.stringify([...HID]))}catch(err){}buildFilters()}
+ const [T0]=range();follow=false;sc.scrollLeft=Math.max(0,(r.t-T0)*pps()-sc.clientWidth/2);
+ HL={t:r.t,until:Date.now()+8000};clearTimeout(hlTimer);hlTimer=setTimeout(()=>{HL=null;draw()},8100);
+ sc.scrollIntoView({behavior:'smooth',block:'start'});syncSlider();draw()});
 function trades(){if(!H||HV===TSIG)return;TSIG=HV;
  const R=[];
  for(const r of H.range||[])R.push({t:r.t,bot:r.bot||'Range',mkt:`${r.lo==null?'':usd(r.lo)}–${r.hi==null?'':usd(r.hi+0.01).slice(1)} · ${hm(r.close)}${r.bot==='FP range'&&r.level?' · '+r.level:''}`,
-  side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl,cost:r.cost});
+  side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl,cost:r.cost,acct:r.acct});
  for(const b of H.buys||[])R.push({t:b.t,bot:b.bot,mkt:`15-min ${hm(Math.floor(b.t/900)*900+900)} · ${b.level||''}`,
   side:b.side,n:b.n,price:b.price!=null?b.price:b.ask,model:null,status:b.status,pnl:b.pnl,cost:b.cost});
  R.sort((a,b)=>a.t-b.t);
@@ -1273,9 +1412,9 @@ function trades(){if(!H||HV===TSIG)return;TSIG=HV;
  for(let i=R.length-1;i>=0;i--){const r=R[i];const d=new Date(r.t*1000).toLocaleDateString('en-US',{timeZone:'America/New_York',month:'numeric',day:'numeric'});
   const res=r.status==='open'?'<span class="pill" style="color:var(--open)">open</span>':`<span class="pill ${r.status==='won'?'w':'l'}">${r.status==='won'?'Won':'Lost'}</span>`;
   const pc=v=>v==null?'<span class="mut">–</span>':`<span style="color:var(${v>=0?'--win':'--lose'})">${money(v)}</span>`;
-  rows+=`<tr><td>${d} ${hm(r.t)}</td><td>${mk(r)} ${r.bot}</td><td>${r.mkt}</td><td>${r.side||''}</td><td>${r.n||''}</td><td>${r.price!=null?cents(r.price):'–'}</td><td>${r.model!=null?cents(r.model):'<span class="mut">–</span>'}</td><td>${res}</td><td>${r.amodel!=null?cents(r.amodel):'–'}</td><td>${r.aprice!=null?cents(r.aprice):'–'}</td><td>${r.awin!=null?(r.awin*100).toFixed(1)+'%':'–'}</td><td>${r.cost!=null?'$'+r.cost.toFixed(2):'–'}</td><td>${r.spent!=null?'$'+r.spent.toFixed(2):'–'}</td><td>${pc(r.pnl)}</td><td>${pc(r.cum)}</td><td>${pc(r.avg)}</td></tr>`}
+  rows+=`<tr class="trrow" data-i="${i}" title="Click to show this trade on the chart"><td>${d} ${hm(r.t)}</td><td>${mk(r)} ${r.bot}</td><td>${r.mkt}</td><td>${r.side||''}</td><td>${r.n||''}</td><td>${r.price!=null?cents(r.price):'–'}</td><td>${r.model!=null?cents(r.model):'<span class="mut">–</span>'}</td><td>${res}</td><td>${r.amodel!=null?cents(r.amodel):'–'}</td><td>${r.aprice!=null?cents(r.aprice):'–'}</td><td>${r.awin!=null?(r.awin*100).toFixed(1)+'%':'–'}</td><td>${r.cost!=null?'$'+r.cost.toFixed(2):'–'}</td><td>${r.spent!=null?'$'+r.spent.toFixed(2):'–'}</td><td>${pc(r.pnl)}</td><td>${pc(r.cum)}</td><td>${pc(r.avg)}</td></tr>`}
  if(!R.length)rows+='<tr><td colspan="16" class="mut">No trades yet.</td></tr>';
- $('trades').innerHTML=rows}
+ TROWS=R;$('trades').innerHTML=rows}
 function tables(px){q15();trades();
  let rows='<tr><th>Bought (ET)</th><th>Side</th><th>Band</th><th>Contracts</th><th>Paid</th><th>Model</th><th>Now</th><th>Closes</th></tr>';
  const ps=D.range.open.filter(p=>p.lo!=null);
@@ -1291,6 +1430,6 @@ function tables(px){q15();trades();
  if(!D.buys.length)rows+=`<tr><td colspan="6" class="mut">No buys this session${s.strike?' (strike '+usd(s.strike)+')':''}. The breakdown and fast-push bots only buy in the last 1–3 minutes; the squeeze bots buy after a Bollinger band break.</td></tr>`;
  $('pos15').innerHTML=rows;
 }
-tick();setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
+tick();loadQuotes();setInterval(loadQuotes,10000);setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
 </script></body></html>
 """
