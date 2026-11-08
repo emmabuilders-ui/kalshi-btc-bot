@@ -1412,17 +1412,21 @@ function qpanel(tL,tR){const cv=$('qp');if(!cv)return;const LH=320,h=LH+22,[g,w]
  for(let c=-100;c<=100;c+=10){g.strokeStyle=css(c===0?'--fg':'--grid2');g.globalAlpha=c===0?.8:c%50===0?.7:.35;g.lineWidth=1;g.setLineDash(c===0||c%50===0?[]:[2,3]);g.beginPath();g.moveTo(L,Math.round(Yc(c))+.5);g.lineTo(w-R,Math.round(Yc(c))+.5);g.stroke()}
  g.globalAlpha=1;g.setLineDash([]);
  // row: [t, 15-min YES bid, ask, hourly YES bid, ask]. YES ask = r[ci+1], NO ask = 1 - YES bid = 1 - r[ci]. Gaps over 2 min break the line.
+ const gapfill=(sign,col)=>{const pts=QT.filter(r=>r[0]>=tL-120&&r[0]<=tR+120&&r[1]!=null&&r[2]!=null&&r[3]!=null&&r[4]!=null);
+  const seg=[];let cur=[];for(const r of pts){if(cur.length&&r[0]-cur[cur.length-1][0]>120){seg.push(cur);cur=[]}cur.push(r)}if(cur.length)seg.push(cur);
+  const a=r=>sign>0?r[2]:1-r[1],b=r=>sign>0?r[4]:1-r[3];g.fillStyle=col;g.globalAlpha=.2;
+  for(const sg of seg){g.beginPath();sg.forEach((r,i)=>{const x=X(r[0]),y=Yc(sign*a(r)*100);i?g.lineTo(x,y):g.moveTo(x,y)});for(let i=sg.length-1;i>=0;i--)g.lineTo(X(sg[i][0]),Yc(sign*b(sg[i])*100));g.closePath();g.fill()}g.globalAlpha=1};
  const series=(ci,sign,col,fill,dash,lw)=>{const pts=QT.filter(r=>r[0]>=tL-120&&r[0]<=tR+120&&r[ci]!=null&&r[ci+1]!=null);
   const seg=[];let cur=[];for(const r of pts){if(cur.length&&r[0]-cur[cur.length-1][0]>120){seg.push(cur);cur=[]}cur.push(r)}if(cur.length)seg.push(cur);
   const v=r=>sign>0?r[ci+1]:1-r[ci];g.strokeStyle=col;g.fillStyle=col;g.lineWidth=lw;g.setLineDash(dash);
-  for(const sg of seg){if(fill){g.globalAlpha=.16;g.beginPath();g.moveTo(X(sg[0][0]),Yc(0));for(const r of sg)g.lineTo(X(r[0]),Yc(sign*v(r)*100));g.lineTo(X(sg[sg.length-1][0]),Yc(0));g.closePath();g.fill();g.globalAlpha=1}
+  for(const sg of seg){if(fill){g.globalAlpha=.07;g.beginPath();g.moveTo(X(sg[0][0]),Yc(0));for(const r of sg)g.lineTo(X(r[0]),Yc(sign*v(r)*100));g.lineTo(X(sg[sg.length-1][0]),Yc(0));g.closePath();g.fill();g.globalAlpha=1}
    g.beginPath();sg.forEach((r,i)=>{const x=X(r[0]),y=Yc(sign*v(r)*100);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}g.setLineDash([])};
+ gapfill(1,css('--yes'));gapfill(-1,css('--no'));   // darker shade where the 15-minute and hourly prices differ
  series(1,1,css('--yes'),true,[],1.8);series(1,-1,css('--no'),true,[],1.8);       // 15-minute contract: solid, shaded
  series(3,1,css('--yes'),false,[6,3],1.6);series(3,-1,css('--no'),false,[6,3],1.6);   // hourly band: dashed
  g.restore();
- g.fillStyle=css('--mut');g.font='10px system-ui';g.textAlign='right';
- for(let c=-100;c<=100;c+=10)g.fillText((c>0?'YES ':c<0?'NO ':'')+Math.abs(c)+'¢',L-4,Yc(c)+3.5);
- g.textAlign='left';g.fillText('solid = 15-minute contract · dashed = hourly band BTC is inside · YES ask above 0, NO ask below',L+4,10)}
+ g.fillStyle=css('--mut');g.font='10px system-ui';g.textAlign='left';
+ for(let c=-100;c<=100;c+=10)g.fillText((c>0?'YES ':c<0?'NO ':'')+Math.abs(c)+'¢',w-R+6,Yc(c)+3.5);g.fillText('solid = 15-minute contract · dashed = hourly band BTC is inside · YES ask above 0, NO ask below',L+4,10)}
 let TSIG=-1,TROWS=[],HL=null,hlTimer=0;
 // click a row in the trades table: bring that trade's marker into view on the chart and ring it for a few seconds
 $('trades').addEventListener('click',e=>{const tr=e.target.closest('tr.trrow');if(!tr||!D)return;const r=TROWS[+tr.dataset.i];if(!r)return;
