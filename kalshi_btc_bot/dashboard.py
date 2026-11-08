@@ -897,6 +897,44 @@ def serve(port: int, token: str, logs: dict[str, Path]):
     srv.serve_forever()
 
 
+FILTER_CSS = """
+.ftrow td{padding:2px 4px;background:var(--card);position:sticky;z-index:1;border-bottom:1px solid var(--grid)}
+.ftin{width:100%;min-width:46px;box-sizing:border-box;font:inherit;font-size:11px;padding:2px 4px;border:1px solid var(--grid2);border-radius:4px;background:var(--bg);color:var(--fg)}
+.ftin:not(:placeholder-shown){border-color:var(--ladder-t,#1d4f91);box-shadow:0 0 0 1px var(--ladder-t,#1d4f91) inset}
+.ftcount{font-size:12px;color:var(--mut);margin:4px 0}.ftcount button{margin-left:8px;font:inherit;font-size:12px;cursor:pointer}
+"""
+
+# A filter box under every column heading of the trade tables. Tables are rebuilt by the page every few seconds, so the
+# filter row is re-added (and the typing position kept) after each rebuild. Syntax: text (contains), a|b (either),
+# !text (does not contain), >5 <=3 =10 !=0 (numbers), 2..9 (between).
+FILTER_JS = r"""
+const FT={};
+function ftNum(s){const v=parseFloat(String(s).replace(/−/g,'-').replace(/[$,+¢%]/g,''));return isNaN(v)?null:v}
+function ftMatch(cell,f){f=f.trim();if(!f)return true;let m;
+ if(m=f.match(/^(>=|<=|!=|>|<|=)\s*(-?[\d.]+)$/)){const v=ftNum(cell),n=+m[2];if(v==null)return m[1]==='!=';
+  return m[1]==='>'?v>n:m[1]==='<'?v<n:m[1]==='>='?v>=n:m[1]==='<='?v<=n:m[1]==='='?v===n:v!==n}
+ if(m=f.match(/^(-?[\d.]+)\s*\.\.\s*(-?[\d.]+)$/)){const v=ftNum(cell);return v!=null&&v>=Math.min(+m[1],+m[2])&&v<=Math.max(+m[1],+m[2])}
+ const c=cell.toLowerCase();if(f[0]==='!'){const r=f.slice(1).trim().toLowerCase();return !r||!c.includes(r)}
+ return f.toLowerCase().split('|').some(x=>x.trim()&&c.includes(x.trim()))}
+function ftRows(t,id){const F=FT[id]||[];const act=F.some(x=>x&&x.trim());let shown=0,total=0;
+ for(const tr of t.rows){if(tr.classList.contains('ftrow')||tr.rowIndex===0)continue;
+  if([...tr.cells].some(c=>c.colSpan>1)){tr.style.display='';continue}
+  total++;const ok=!act||F.every((f,i)=>!f||ftMatch(tr.cells[i]?tr.cells[i].textContent:'',f));tr.style.display=ok?'':'none';if(ok)shown++}
+ let box=document.getElementById(id+'-fc');
+ if(!box){box=document.createElement('div');box.id=id+'-fc';box.className='ftcount';const w=t.parentElement;w.parentElement.insertBefore(box,w.classList.contains('tscroll')||w.classList.contains('scroll')?w:t)}
+ box.innerHTML=act?`showing ${shown} of ${total} rows<button type="button">Clear filters</button>`:'';
+ const b=box.querySelector('button');if(b)b.onclick=()=>{FT[id]=[];t.querySelectorAll('.ftin').forEach(i=>i.value='');ftRows(t,id)}}
+function ftApply(t,id){const h=t.rows[0];if(!h||!h.querySelector('th'))return;const F=FT[id]||(FT[id]=[]);
+ const tr=document.createElement('tr');tr.className='ftrow';const top=h.offsetHeight+'px';
+ [...h.cells].forEach((th,i)=>{const td=document.createElement('td');td.style.top=top;const inp=document.createElement('input');inp.className='ftin';inp.placeholder='filter';
+  inp.dataset.ft=id;inp.dataset.c=i;inp.value=F[i]||'';inp.title='text · a|b either · !text not · >5 <=3 =10 · 2..9 between';inp.setAttribute('aria-label','Filter '+th.textContent);td.appendChild(inp);tr.appendChild(td)});
+ h.after(tr);ftRows(t,id)}
+function ftWatch(id){const t=document.getElementById(id);if(!t)return;const d=Object.getOwnPropertyDescriptor(Element.prototype,'innerHTML');
+ Object.defineProperty(t,'innerHTML',{configurable:true,get(){return d.get.call(t)},set(v){const a=document.activeElement,keep=a&&a.dataset&&a.dataset.ft===id?{c:a.dataset.c,s:a.selectionStart,e:a.selectionEnd}:null;
+  d.set.call(t,v);ftApply(t,id);if(keep){const n=t.querySelector(`.ftin[data-c="${keep.c}"]`);if(n){n.focus();try{n.setSelectionRange(keep.s,keep.e)}catch(e){}}}}});
+ t.addEventListener('input',e=>{const i=e.target;if(!i.classList||!i.classList.contains('ftin'))return;(FT[id]||(FT[id]=[]))[+i.dataset.c]=i.value;ftRows(t,id)})}
+"""
+
 PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Bot Live Chart</title>
@@ -938,7 +976,7 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 .key i{display:inline-block;width:12px;height:10px;margin-right:4px;vertical-align:middle;border-radius:2px}
 .navbtn{padding:5px 12px;border:1px solid var(--grid2);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-weight:600;font-size:13px}.navbtn:hover{border-color:var(--ladder-t)}
 body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:var(--card)}
-</style></head><body><div class="wrap">
+/*FILTER_CSS*/</style></head><body><div class="wrap">
 <div class="top"><h1 class="nor5">Paper bots, live</h1><a class="nor5 navbtn" href="range5/">5-account range bot →</a><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
 <div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button><button id="bbbtn" aria-pressed="false">Show Bollinger bands</button><button id="kcbtn" aria-pressed="false">Show Keltner channels</button><select id="bandk" aria-label="Bar length for the bands"><option value="5">5-min bars</option><option value="15">15-min bars</option><option value="60">60-min bars</option></select>
@@ -951,7 +989,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><b style="color:var(--sup)">╌</b> rising support / <b style="color:var(--res)">╌</b> falling resistance trend lines (5-min swings), × = break</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin: 60-second BRTI average (black, what Kalshi settles on), BRTI each second (light gray), and every trade</div><canvas id="c"></canvas>
-<div class="nor5"><div class="lbl" style="margin-top:6px">Kalshi YES ask (up) and NO ask (down) in cents, centered on 0: 15-minute contract on top, the hourly band BTC is inside below <span class="mut" style="font-weight:400">· recorded from when this was first deployed</span></div><canvas id="qp"></canvas></div>
+<div class="nor5"><div class="lbl" style="margin-top:6px">Kalshi YES ask (green, up) and NO ask (red, down) in cents, centered on 0: the 15-minute contract and the hourly band BTC is inside, overlaid, a line every 10¢ <span class="mut" style="font-weight:400">· recorded from when this was first deployed</span></div><canvas id="qp"></canvas></div>
 <div style="display:flex;align-items:center;gap:10px;margin-top:6px"><span class="mut" id="slL" style="font-size:12px;white-space:nowrap"></span>
 <input type="range" id="slider" min="0" max="1000" value="1000" style="flex:1;accent-color:var(--ladder-t);height:22px" aria-label="Move through the history">
 <span class="mut" id="slR" style="font-size:12px;white-space:nowrap">now</span></div>
@@ -986,6 +1024,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <p class="mut">BRTI is the index Kalshi settles on; settlement is its average over the last 60 seconds. Paper trades only. Updates every 2 seconds.</p>
 </div></div>
 <script>
+/*FILTER_JS*/
 let D=null,H=null,P=[];          // live data, history, merged prices [[t,p]]
 const R5=location.search.includes('v=range5'),QS=R5?'?v=range5':'';   // chart-only view for the 5-account bot page
 if(R5){document.body.classList.add('r5');document.querySelector('.r5only').style.display=''}
@@ -1365,24 +1404,31 @@ syncBandBtns();
 let QT=[];
 async function loadQuotes(){try{const since=QT.length?QT[QT.length-1][0]:0;const add=await get('quotes.json?since='+since,15000);
  if(add.length){QT=QT.concat(add);draw()}}catch(e){}}
-function qpanel(tL,tR){const cv=$('qp');if(!cv)return;const LH=112,h=LH*2+22,[g,w]=setup(cv,h),L=66,R=GUT,X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
- const lane=(top,ci,name)=>{const mid=top+LH/2,sc=(LH/2-6)/100;   // 100 cents = full half-lane
-  g.strokeStyle=css('--grid2');g.lineWidth=1;g.setLineDash([]);g.beginPath();g.moveTo(L,mid+.5);g.lineTo(w-R,mid+.5);g.stroke();
-  g.setLineDash([2,4]);for(const c of [50,-50]){g.beginPath();g.moveTo(L,mid-c*sc);g.lineTo(w-R,mid-c*sc);g.stroke()}g.setLineDash([]);
-  g.fillStyle=css('--mut');g.font='10px system-ui';g.textAlign='right';for(const c of [100,50,0,-50,-100])g.fillText((c>0?'YES ':c<0?'NO ':'')+Math.abs(c)+'¢',L-4,mid-c*sc+3.5);g.textAlign='left';
-  g.fillText(name,L+4,top+11);
-  const pts=QT.filter(r=>r[0]>=tL-120&&r[0]<=tR+120&&r[ci]!=null&&r[ci+1]!=null);
-  const area=(sign,col)=>{g.fillStyle=col;g.strokeStyle=col;g.lineWidth=1.3;
-   const seg=[];let cur=[];for(const r of pts){if(cur.length&&r[0]-cur[cur.length-1][0]>120){seg.push(cur);cur=[]}cur.push(r)}if(cur.length)seg.push(cur);
-   for(const s of seg){const v=r=>sign>0?r[ci+1]:1-r[ci];
-    g.globalAlpha=.22;g.beginPath();g.moveTo(X(s[0][0]),mid);for(const r of s)g.lineTo(X(r[0]),mid-sign*v(r)*100*sc);g.lineTo(X(s[s.length-1][0]),mid);g.closePath();g.fill();
-    g.globalAlpha=1;g.beginPath();s.forEach((r,i)=>{const x=X(r[0]),y=mid-sign*v(r)*100*sc;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}};
-  // row: [t, 15-min YES bid, ask, hourly YES bid, ask]; lane ci is the bid column. YES ask = r[ci+1], NO ask = 1 - YES bid.
-  area(1,css('--yes'));area(-1,css('--no'))};
- timegrid(g,X,tL,tR,0,18,h,true);
- g.save();g.beginPath();g.rect(L,0,w-L-R,h-18);g.clip();
- lane(0,1,'15-minute contract');lane(LH+4,3,'hourly band BTC is inside');
- g.restore()}
+function qpanel(tL,tR){const cv=$('qp');if(!cv)return;const LH=320,h=LH+22,[g,w]=setup(cv,h),L=66,R=GUT,X=t=>L+(t-tL)/(tR-tL)*(w-L-R),mid=LH/2,sc=(LH/2-8)/100;
+ const Yc=c=>mid-c*sc;
+ timegrid(g,X,tL,tR,0,22,h,true);
+ g.save();g.beginPath();g.rect(L,0,w-L-R,LH);g.clip();
+ // a line every 10 cents, stronger at 0 and +-50
+ for(let c=-100;c<=100;c+=10){g.strokeStyle=css(c===0?'--fg':'--grid2');g.globalAlpha=c===0?.8:c%50===0?.7:.35;g.lineWidth=1;g.setLineDash(c===0||c%50===0?[]:[2,3]);g.beginPath();g.moveTo(L,Math.round(Yc(c))+.5);g.lineTo(w-R,Math.round(Yc(c))+.5);g.stroke()}
+ g.globalAlpha=1;g.setLineDash([]);
+ // row: [t, 15-min YES bid, ask, hourly YES bid, ask]. YES ask = r[ci+1], NO ask = 1 - YES bid = 1 - r[ci]. Gaps over 2 min break the line.
+ // fills: dark from the 0 line out to the nearer of the two prices, lighter from there out to the farther one
+ const gapfill=(sign,col)=>{const pts=QT.filter(r=>r[0]>=tL-120&&r[0]<=tR+120&&r[1]!=null&&r[2]!=null&&r[3]!=null&&r[4]!=null);
+  const seg=[];let cur=[];for(const r of pts){if(cur.length&&r[0]-cur[cur.length-1][0]>120){seg.push(cur);cur=[]}cur.push(r)}if(cur.length)seg.push(cur);
+  const A=r=>sign>0?r[2]:1-r[1],B=r=>sign>0?r[4]:1-r[3],near=r=>Math.min(A(r),B(r)),far=r=>Math.max(A(r),B(r));g.fillStyle=col;
+  const poly=(top,bot,al)=>{g.globalAlpha=al;for(const sg of seg){g.beginPath();sg.forEach((r,i)=>{const x=X(r[0]),y=Yc(sign*top(r)*100);i?g.lineTo(x,y):g.moveTo(x,y)});for(let i=sg.length-1;i>=0;i--)g.lineTo(X(sg[i][0]),Yc(sign*bot(sg[i])*100));g.closePath();g.fill()}};
+  poly(near,()=>0,.26);poly(far,near,.09);g.globalAlpha=1};
+ const series=(ci,sign,col,fill,dash,lw)=>{const pts=QT.filter(r=>r[0]>=tL-120&&r[0]<=tR+120&&r[ci]!=null&&r[ci+1]!=null);
+  const seg=[];let cur=[];for(const r of pts){if(cur.length&&r[0]-cur[cur.length-1][0]>120){seg.push(cur);cur=[]}cur.push(r)}if(cur.length)seg.push(cur);
+  const v=r=>sign>0?r[ci+1]:1-r[ci];g.strokeStyle=col;g.fillStyle=col;g.lineWidth=lw;g.setLineDash(dash);
+  for(const sg of seg){if(fill){g.globalAlpha=.07;g.beginPath();g.moveTo(X(sg[0][0]),Yc(0));for(const r of sg)g.lineTo(X(r[0]),Yc(sign*v(r)*100));g.lineTo(X(sg[sg.length-1][0]),Yc(0));g.closePath();g.fill();g.globalAlpha=1}
+   g.beginPath();sg.forEach((r,i)=>{const x=X(r[0]),y=Yc(sign*v(r)*100);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}g.setLineDash([])};
+ gapfill(1,css('--yes'));gapfill(-1,css('--no'));   // darker shade where the 15-minute and hourly prices differ
+ series(1,1,css('--yes'),false,[],1.8);series(1,-1,css('--no'),false,[],1.8);       // 15-minute contract: solid, shaded
+ series(3,1,css('--yes'),false,[6,3],1.6);series(3,-1,css('--no'),false,[6,3],1.6);   // hourly band: dashed
+ g.restore();
+ g.fillStyle=css('--mut');g.font='10px system-ui';g.textAlign='left';
+ for(let c=-100;c<=100;c+=10)g.fillText(Math.abs(c)+'¢',w-R+6,Yc(c)+3.5);g.fillText('solid = 15-minute contract · dashed = hourly band BTC is inside · green above 0, red below',L+4,10)}
 let TSIG=-1,TROWS=[],HL=null,hlTimer=0;
 // click a row in the trades table: bring that trade's marker into view on the chart and ring it for a few seconds
 $('trades').addEventListener('click',e=>{const tr=e.target.closest('tr.trrow');if(!tr||!D)return;const r=TROWS[+tr.dataset.i];if(!r)return;
@@ -1433,3 +1479,5 @@ function tables(px){q15();trades();
 tick();loadQuotes();setInterval(loadQuotes,10000);setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
 </script></body></html>
 """
+PAGE = PAGE.replace("/*FILTER_CSS*/", FILTER_CSS).replace("/*FILTER_JS*/", FILTER_JS + "\nfor (const id of ['perf','trades','pos','pos15']) ftWatch(id);")
+

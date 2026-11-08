@@ -6,7 +6,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from .dashboard import _json, _num, _rows
+from .dashboard import FILTER_CSS, FILTER_JS, _json, _num, _rows
 
 
 def range5_data(d: Path, prices: list) -> dict:
@@ -57,7 +57,7 @@ th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--card)
 @media(min-width:1000px){.grid2{grid-template-columns:1fr 1fr}}
 .navbtn{padding:5px 12px;border:1px solid var(--grid2);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-weight:600;font-size:13px}.navbtn:hover{border-color:var(--a1)}
 .grid2>*{min-width:0}.card{min-width:0}
-</style></head><body><div class="wrap">
+/*FILTER_CSS*/</style></head><body><div class="wrap">
 <div class="top"><a class="navbtn" href="../">← Main chart (3 bots)</a><h1>Hourly range bot · 5 paper accounts</h1>
 <span class="mut">Paper only, no real orders · times ET · updates every 10 s</span></div>
 <div class="top"><span>Total profit <span class="big" id="tot">–</span></span>
@@ -71,6 +71,7 @@ th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--card)
 <div class="card"><h2>All trades</h2><div class="scroll"><table id="trd"></table></div></div>
 </div><div id="tip"></div>
 <script>
+/*FILTER_JS*/
 const TZ='America/New_York';
 const fDT=new Intl.DateTimeFormat('en-US',{timeZone:TZ,month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true});
 const fHM=new Intl.DateTimeFormat('en-US',{timeZone:TZ,hour:'numeric',minute:'2-digit',hour12:true});
@@ -145,3 +146,5 @@ const tip=document.getElementById('tip');
 async function tick(){try{const r=await fetch('data.json',{cache:'no-store'});D=await r.json();document.getElementById('err').textContent='';tables();drawPL();drawPX()}catch(e){document.getElementById('err').textContent='connection lost, retrying…'}}
 tick();setInterval(tick,10000);addEventListener('resize',()=>{if(D){drawPL();drawPX()}});
 </script></body></html>"""
+PAGE5 = PAGE5.replace("/*FILTER_CSS*/", FILTER_CSS).replace("/*FILTER_JS*/", FILTER_JS + "\nfor (const id of ['acc','opn','trd']) ftWatch(id);")
+
