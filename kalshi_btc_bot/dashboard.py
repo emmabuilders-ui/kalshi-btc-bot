@@ -329,6 +329,59 @@ def hour_seconds(path: Path, h0: int) -> np.ndarray:
     return a
 
 
+class QuoteTape:
+    """Kalshi YES/NO asks over time, so the chart can show them for the past too: [t, 15-min YES bid, 15-min YES ask,
+    hourly YES bid, hourly YES ask] every 10 seconds, where 'hourly' is the range band BTC is inside. Kept in a small
+    CSV in the home folder (about 0.25 MB a day) and trimmed to the last 14 days when the server starts."""
+    KEEP, EVERY = 14 * 86400, 10
+
+    def __init__(self, path: Path):
+        self.path, self.rows, self.last = path, [], 0.0
+        try:
+            cut = time.time() - self.KEEP
+            for line in path.read_text().splitlines():
+                try:
+                    v = [float(x) if x else None for x in line.split(",")]
+                except ValueError:
+                    continue
+                if len(v) == 5 and v[0] and v[0] >= cut:
+                    self.rows.append(v)
+            if self.rows:
+                self.last = self.rows[-1][0]
+            path.write_text("".join(self._line(r) for r in self.rows))
+        except OSError:
+            pass
+
+    @staticmethod
+    def _line(r) -> str:
+        return ",".join("" if x is None else (str(int(x)) if i == 0 else f"{x:.4f}") for i, x in enumerate(r)) + "\n"
+
+    def add(self, now: float, q15: list | None, quotes: dict):
+        if now - self.last < self.EVERY:
+            return
+        hb = ha = None
+        px = quotes.get("price") if quotes else None
+        for b in (quotes or {}).get("bands", []):
+            lo, hi = b.get("lo"), b.get("hi")
+            if px is not None and (lo is None or px >= lo) and (hi is None or px < hi + 0.01):
+                hb, ha = b.get("yes_bid"), b.get("yes_ask")
+                break
+        row = [int(now), q15[1] if q15 else None, q15[2] if q15 else None, hb, ha]
+        if all(x is None for x in row[1:]):
+            return
+        self.last = now
+        self.rows.append(row)
+        try:
+            with self.path.open("a") as f:
+                f.write(self._line(row))
+        except OSError:
+            pass
+
+    def since(self, t: int) -> list:
+        import bisect
+        return self.rows[bisect.bisect_right([r[0] for r in self.rows], t):]
+
+
 class LevelTracker:
     """Support and resistance recalculated every minute from the price history (the same 13 kinds of
     level the fast-push bot uses, measured from the price at that minute). Results are cached on disk."""
@@ -427,6 +480,7 @@ class Dashboard:
         self.model = RangeModel()
         self.levels = LevelTracker(logs["breakdown"] / "prices", Path.home() / ".kalshi-dash-levels.json")
         self.quotes: dict = {}
+        self.tape = QuoteTape(Path.home() / ".kalshi-dash-quotes.csv")
         self.strikes: dict[int, float] = {}   # 15-minute session open -> Kalshi target (strike)
         self._strikes_at = 0.0
         self.q15: list[list] = []     # [t, yes_bid, yes_ask] for the current 15-minute contract
@@ -621,6 +675,7 @@ class Dashboard:
             self._quotes_at = now
             try:
                 self.quotes = self.range_quotes(now)
+                self.tape.add(now, self.q15[-1] if self.q15 else None, self.quotes)
             except Exception as e:
                 self.err = f"range prices: {e}"
         s = self.session
@@ -792,6 +847,14 @@ def make_handler(dash: Dashboard, token: str):
                     except ValueError:
                         since = 0
                 self._send(200, json.dumps(dash.levels.since(since)).encode(), "application/json")
+            elif self.path.startswith(root + "quotes.json"):
+                since = 0
+                if "?since=" in self.path:
+                    try:
+                        since = int(self.path.split("?since=")[1])
+                    except ValueError:
+                        since = 0
+                self._send(200, json.dumps(dash.tape.since(since)).encode(), "application/json")
             elif self.path == root + "data.json":
                 self._send(200, dash.cached("data", 1, dash.data), "application/json")
             elif self.path == root + "range5/":
@@ -881,6 +944,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><b style="color:var(--sup)">╌</b> rising support / <b style="color:var(--res)">╌</b> falling resistance trend lines (5-min swings), × = break</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin: 60-second BRTI average (black, what Kalshi settles on), BRTI each second (light gray), and every trade</div><canvas id="c"></canvas>
+<div class="nor5"><div class="lbl" style="margin-top:6px">Kalshi YES ask (up) and NO ask (down) in cents, centered on 0: 15-minute contract on top, the hourly band BTC is inside below <span class="mut" style="font-weight:400">· recorded from when this was first deployed</span></div><canvas id="qp"></canvas></div>
 <div style="display:flex;align-items:center;gap:10px;margin-top:6px"><span class="mut" id="slL" style="font-size:12px;white-space:nowrap"></span>
 <input type="range" id="slider" min="0" max="1000" value="1000" style="flex:1;accent-color:var(--ladder-t);height:22px" aria-label="Move through the history">
 <span class="mut" id="slR" style="font-size:12px;white-space:nowrap">now</span></div>
@@ -1185,7 +1249,7 @@ function draw(){
  for(const [t1,t2,yt,yb,sh] of gut){if(sh){g.fillStyle=css('--ladder');g.globalAlpha=.13;g.fillRect(w-R,yt,R,yb-yt);g.globalAlpha=1}
   const ym=(yt+yb)/2,two=t2&&yb-yt>=24;if(ym-12<T||ym+13>h-B)continue;g.fillStyle=css('--ladder-t');g.fillText(t1,w-R+5,two?ym-1.5:ym+3.5);if(two)g.fillText(t2,w-R+5,ym+10.5)}
  g.restore();
- plchart(tL,tR);
+ qpanel(tL,tR);plchart(tL,tR);
 }
 // one shape per bot: Range circle, Breakdown triangle, Fast push square, Fast push on range bands diamond
 function marker(g,bot,x,y,col){g.fillStyle=col;g.strokeStyle=css('--card');g.lineWidth=1.5;g.beginPath();
@@ -1290,6 +1354,28 @@ $('bbbtn').onclick=()=>{BBON=!BBON;bandSave();syncBandBtns();draw()};
 $('kcbtn').onclick=()=>{KCON=!KCON;bandSave();syncBandBtns();draw()};
 $('bandk').onchange=e=>{BANDK=+e.target.value;bandSave();draw()};
 syncBandBtns();
+// YES/NO asks recorded by the server (quotes.json): [t, 15-min YES bid, ask, hourly YES bid, ask]
+let QT=[];
+async function loadQuotes(){try{const since=QT.length?QT[QT.length-1][0]:0;const add=await get('quotes.json?since='+since,15000);
+ if(add.length){QT=QT.concat(add);draw()}}catch(e){}}
+function qpanel(tL,tR){const cv=$('qp');if(!cv)return;const LH=112,h=LH*2+22,[g,w]=setup(cv,h),L=66,R=GUT,X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
+ const lane=(top,ci,name)=>{const mid=top+LH/2,sc=(LH/2-6)/100;   // 100 cents = full half-lane
+  g.strokeStyle=css('--grid2');g.lineWidth=1;g.setLineDash([]);g.beginPath();g.moveTo(L,mid+.5);g.lineTo(w-R,mid+.5);g.stroke();
+  g.setLineDash([2,4]);for(const c of [50,-50]){g.beginPath();g.moveTo(L,mid-c*sc);g.lineTo(w-R,mid-c*sc);g.stroke()}g.setLineDash([]);
+  g.fillStyle=css('--mut');g.font='10px system-ui';g.textAlign='right';for(const c of [100,50,0,-50,-100])g.fillText((c>0?'YES ':c<0?'NO ':'')+Math.abs(c)+'¢',L-4,mid-c*sc+3.5);g.textAlign='left';
+  g.fillText(name,L+4,top+11);
+  const pts=QT.filter(r=>r[0]>=tL-120&&r[0]<=tR+120&&r[ci]!=null&&r[ci+1]!=null);
+  const area=(sign,col)=>{g.fillStyle=col;g.strokeStyle=col;g.lineWidth=1.3;
+   const seg=[];let cur=[];for(const r of pts){if(cur.length&&r[0]-cur[cur.length-1][0]>120){seg.push(cur);cur=[]}cur.push(r)}if(cur.length)seg.push(cur);
+   for(const s of seg){const v=r=>sign>0?r[ci+1]:1-r[ci];
+    g.globalAlpha=.22;g.beginPath();g.moveTo(X(s[0][0]),mid);for(const r of s)g.lineTo(X(r[0]),mid-sign*v(r)*100*sc);g.lineTo(X(s[s.length-1][0]),mid);g.closePath();g.fill();
+    g.globalAlpha=1;g.beginPath();s.forEach((r,i)=>{const x=X(r[0]),y=mid-sign*v(r)*100*sc;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}};
+  // row: [t, 15-min YES bid, ask, hourly YES bid, ask]; lane ci is the bid column. YES ask = r[ci+1], NO ask = 1 - YES bid.
+  area(1,css('--yes'));area(-1,css('--no'))};
+ timegrid(g,X,tL,tR,0,18,h,true);
+ g.save();g.beginPath();g.rect(L,0,w-L-R,h-18);g.clip();
+ lane(0,1,'15-minute contract');lane(LH+4,3,'hourly band BTC is inside');
+ g.restore()}
 let TSIG=-1,TROWS=[],HL=null,hlTimer=0;
 // click a row in the trades table: bring that trade's marker into view on the chart and ring it for a few seconds
 $('trades').addEventListener('click',e=>{const tr=e.target.closest('tr.trrow');if(!tr||!D)return;const r=TROWS[+tr.dataset.i];if(!r)return;
@@ -1337,6 +1423,6 @@ function tables(px){q15();trades();
  if(!D.buys.length)rows+=`<tr><td colspan="6" class="mut">No buys this session${s.strike?' (strike '+usd(s.strike)+')':''}. The breakdown and fast-push bots only buy in the last 1–3 minutes; the squeeze bots buy after a Bollinger band break.</td></tr>`;
  $('pos15').innerHTML=rows;
 }
-tick();setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
+tick();loadQuotes();setInterval(loadQuotes,10000);setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
 </script></body></html>
 """
