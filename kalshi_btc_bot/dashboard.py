@@ -1404,7 +1404,7 @@ syncBandBtns();
 let QT=[];
 async function loadQuotes(){try{const since=QT.length?QT[QT.length-1][0]:0;const add=await get('quotes.json?since='+since,15000);
  if(add.length){QT=QT.concat(add);draw()}}catch(e){}}
-function qpanel(tL,tR){const cv=$('qp');if(!cv)return;const LH=240,h=LH+22,[g,w]=setup(cv,h),L=66,R=GUT,X=t=>L+(t-tL)/(tR-tL)*(w-L-R),mid=LH/2,sc=(LH/2-8)/100;
+function qpanel(tL,tR){const cv=$('qp');if(!cv)return;const LH=320,h=LH+22,[g,w]=setup(cv,h),L=66,R=GUT,X=t=>L+(t-tL)/(tR-tL)*(w-L-R),mid=LH/2,sc=(LH/2-8)/100;
  const Yc=c=>mid-c*sc;
  timegrid(g,X,tL,tR,0,22,h,true);
  g.save();g.beginPath();g.rect(L,0,w-L-R,LH);g.clip();
