@@ -897,6 +897,44 @@ def serve(port: int, token: str, logs: dict[str, Path]):
     srv.serve_forever()
 
 
+FILTER_CSS = """
+.ftrow td{padding:2px 4px;background:var(--card);position:sticky;z-index:1;border-bottom:1px solid var(--grid)}
+.ftin{width:100%;min-width:46px;box-sizing:border-box;font:inherit;font-size:11px;padding:2px 4px;border:1px solid var(--grid2);border-radius:4px;background:var(--bg);color:var(--fg)}
+.ftin:not(:placeholder-shown){border-color:var(--ladder-t,#1d4f91);box-shadow:0 0 0 1px var(--ladder-t,#1d4f91) inset}
+.ftcount{font-size:12px;color:var(--mut);margin:4px 0}.ftcount button{margin-left:8px;font:inherit;font-size:12px;cursor:pointer}
+"""
+
+# A filter box under every column heading of the trade tables. Tables are rebuilt by the page every few seconds, so the
+# filter row is re-added (and the typing position kept) after each rebuild. Syntax: text (contains), a|b (either),
+# !text (does not contain), >5 <=3 =10 !=0 (numbers), 2..9 (between).
+FILTER_JS = r"""
+const FT={};
+function ftNum(s){const v=parseFloat(String(s).replace(/−/g,'-').replace(/[$,+¢%]/g,''));return isNaN(v)?null:v}
+function ftMatch(cell,f){f=f.trim();if(!f)return true;let m;
+ if(m=f.match(/^(>=|<=|!=|>|<|=)\s*(-?[\d.]+)$/)){const v=ftNum(cell),n=+m[2];if(v==null)return m[1]==='!=';
+  return m[1]==='>'?v>n:m[1]==='<'?v<n:m[1]==='>='?v>=n:m[1]==='<='?v<=n:m[1]==='='?v===n:v!==n}
+ if(m=f.match(/^(-?[\d.]+)\s*\.\.\s*(-?[\d.]+)$/)){const v=ftNum(cell);return v!=null&&v>=Math.min(+m[1],+m[2])&&v<=Math.max(+m[1],+m[2])}
+ const c=cell.toLowerCase();if(f[0]==='!'){const r=f.slice(1).trim().toLowerCase();return !r||!c.includes(r)}
+ return f.toLowerCase().split('|').some(x=>x.trim()&&c.includes(x.trim()))}
+function ftRows(t,id){const F=FT[id]||[];const act=F.some(x=>x&&x.trim());let shown=0,total=0;
+ for(const tr of t.rows){if(tr.classList.contains('ftrow')||tr.rowIndex===0)continue;
+  if([...tr.cells].some(c=>c.colSpan>1)){tr.style.display='';continue}
+  total++;const ok=!act||F.every((f,i)=>!f||ftMatch(tr.cells[i]?tr.cells[i].textContent:'',f));tr.style.display=ok?'':'none';if(ok)shown++}
+ let box=document.getElementById(id+'-fc');
+ if(!box){box=document.createElement('div');box.id=id+'-fc';box.className='ftcount';const w=t.parentElement;w.parentElement.insertBefore(box,w.classList.contains('tscroll')||w.classList.contains('scroll')?w:t)}
+ box.innerHTML=act?`showing ${shown} of ${total} rows<button type="button">Clear filters</button>`:'';
+ const b=box.querySelector('button');if(b)b.onclick=()=>{FT[id]=[];t.querySelectorAll('.ftin').forEach(i=>i.value='');ftRows(t,id)}}
+function ftApply(t,id){const h=t.rows[0];if(!h||!h.querySelector('th'))return;const F=FT[id]||(FT[id]=[]);
+ const tr=document.createElement('tr');tr.className='ftrow';const top=h.offsetHeight+'px';
+ [...h.cells].forEach((th,i)=>{const td=document.createElement('td');td.style.top=top;const inp=document.createElement('input');inp.className='ftin';inp.placeholder='filter';
+  inp.dataset.ft=id;inp.dataset.c=i;inp.value=F[i]||'';inp.title='text · a|b either · !text not · >5 <=3 =10 · 2..9 between';inp.setAttribute('aria-label','Filter '+th.textContent);td.appendChild(inp);tr.appendChild(td)});
+ h.after(tr);ftRows(t,id)}
+function ftWatch(id){const t=document.getElementById(id);if(!t)return;const d=Object.getOwnPropertyDescriptor(Element.prototype,'innerHTML');
+ Object.defineProperty(t,'innerHTML',{configurable:true,get(){return d.get.call(t)},set(v){const a=document.activeElement,keep=a&&a.dataset&&a.dataset.ft===id?{c:a.dataset.c,s:a.selectionStart,e:a.selectionEnd}:null;
+  d.set.call(t,v);ftApply(t,id);if(keep){const n=t.querySelector(`.ftin[data-c="${keep.c}"]`);if(n){n.focus();try{n.setSelectionRange(keep.s,keep.e)}catch(e){}}}}});
+ t.addEventListener('input',e=>{const i=e.target;if(!i.classList||!i.classList.contains('ftin'))return;(FT[id]||(FT[id]=[]))[+i.dataset.c]=i.value;ftRows(t,id)})}
+"""
+
 PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Bot Live Chart</title>
@@ -938,7 +976,7 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 .key i{display:inline-block;width:12px;height:10px;margin-right:4px;vertical-align:middle;border-radius:2px}
 .navbtn{padding:5px 12px;border:1px solid var(--grid2);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-weight:600;font-size:13px}.navbtn:hover{border-color:var(--ladder-t)}
 body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:var(--card)}
-</style></head><body><div class="wrap">
+/*FILTER_CSS*/</style></head><body><div class="wrap">
 <div class="top"><h1 class="nor5">Paper bots, live</h1><a class="nor5 navbtn" href="range5/">5-account range bot →</a><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
 <div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button><button id="bbbtn" aria-pressed="false">Show Bollinger bands</button><button id="kcbtn" aria-pressed="false">Show Keltner channels</button><select id="bandk" aria-label="Bar length for the bands"><option value="5">5-min bars</option><option value="15">15-min bars</option><option value="60">60-min bars</option></select>
@@ -986,6 +1024,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <p class="mut">BRTI is the index Kalshi settles on; settlement is its average over the last 60 seconds. Paper trades only. Updates every 2 seconds.</p>
 </div></div>
 <script>
+/*FILTER_JS*/
 let D=null,H=null,P=[];          // live data, history, merged prices [[t,p]]
 const R5=location.search.includes('v=range5'),QS=R5?'?v=range5':'';   // chart-only view for the 5-account bot page
 if(R5){document.body.classList.add('r5');document.querySelector('.r5only').style.display=''}
@@ -1433,3 +1472,5 @@ function tables(px){q15();trades();
 tick();loadQuotes();setInterval(loadQuotes,10000);setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
 </script></body></html>
 """
+PAGE = PAGE.replace("/*FILTER_CSS*/", FILTER_CSS).replace("/*FILTER_JS*/", FILTER_JS + "\nfor (const id of ['perf','trades','pos','pos15']) ftWatch(id);")
+
