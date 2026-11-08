@@ -1,7 +1,7 @@
 {
- "updated_utc": "2026-11-08T10:35:56+00:00",
+ "updated_utc": "2026-11-08T11:35:56+00:00",
  "scale": 0.333,
- "total_pnl_dollars": -1.41,
+ "total_pnl_dollars": 1.81,
  "accounts": {
   "1 YES 90-99c rebuilt +2c": {
    "size": 27,
@@ -19,17 +19,17 @@
   },
   "3 YES 75-89c rebuilt >= ask": {
    "size": 19,
-   "trades": 49,
-   "wins": 38,
-   "pnl_dollars": -15.63,
+   "trades": 50,
+   "wins": 39,
+   "pnl_dollars": -12.59,
    "open": 0
   },
   "4 NO 90-99c rebuilt +2c": {
    "size": 4,
-   "trades": 87,
-   "wins": 78,
-   "pnl_dollars": -11.28,
-   "open": 1
+   "trades": 88,
+   "wins": 79,
+   "pnl_dollars": -11.1,
+   "open": 0
   },
   "5 YES 90-99c rebuilt +2c doubling": {
    "size": "$2.33 doubling, cap $74.67",
