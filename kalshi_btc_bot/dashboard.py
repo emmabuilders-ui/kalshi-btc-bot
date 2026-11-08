@@ -332,23 +332,29 @@ def hour_seconds(path: Path, h0: int) -> np.ndarray:
 class QuoteTape:
     """Kalshi YES/NO asks over time, so the chart can show them for the past too: [t, 15-min YES bid, 15-min YES ask,
     hourly YES bid, hourly YES ask] every 10 seconds, where 'hourly' is the range band BTC is inside. Kept in a small
-    CSV in the home folder (about 0.25 MB a day) and trimmed to the last 14 days when the server starts."""
+    CSV in the home folder (about 0.25 MB a day). Only the last 14 days are kept in memory and shown on the chart; at
+    server start older rows move to an archive file next to it (~/.kalshi-dash-quotes-archive.csv) and are never deleted."""
     KEEP, EVERY = 14 * 86400, 10
 
     def __init__(self, path: Path):
         self.path, self.rows, self.last = path, [], 0.0
+        self.times: list[float] = []
         try:
-            cut = time.time() - self.KEEP
+            cut, old = time.time() - self.KEEP, []
             for line in path.read_text().splitlines():
                 try:
                     v = [float(x) if x else None for x in line.split(",")]
                 except ValueError:
                     continue
-                if len(v) == 5 and v[0] and v[0] >= cut:
-                    self.rows.append(v)
+                if len(v) == 5 and v[0]:
+                    (self.rows if v[0] >= cut else old).append(v)
+            if old:      # archive first, so a crash between the two writes can only duplicate rows, never lose them
+                with path.with_name(path.stem + "-archive.csv").open("a") as f:
+                    f.write("".join(self._line(r) for r in old))
+                path.write_text("".join(self._line(r) for r in self.rows))
             if self.rows:
                 self.last = self.rows[-1][0]
-            path.write_text("".join(self._line(r) for r in self.rows))
+            self.times = [r[0] for r in self.rows]
         except OSError:
             pass
 
@@ -371,6 +377,7 @@ class QuoteTape:
             return
         self.last = now
         self.rows.append(row)
+        self.times.append(row[0])
         try:
             with self.path.open("a") as f:
                 f.write(self._line(row))
@@ -379,7 +386,7 @@ class QuoteTape:
 
     def since(self, t: int) -> list:
         import bisect
-        return self.rows[bisect.bisect_right([r[0] for r in self.rows], t):]
+        return self.rows[bisect.bisect_right(self.times, t):]
 
 
 class LevelTracker:
