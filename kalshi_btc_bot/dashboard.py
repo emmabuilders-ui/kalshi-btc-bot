@@ -856,6 +856,7 @@ canvas{display:block}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 td,th{padding:6px 8px;text-align:left;border-bottom:1px solid var(--grid);white-space:nowrap}
 th{font-size:12px;color:var(--mut);font-weight:600}
+.trrow{cursor:pointer}.trrow:hover td{background:var(--grid)}
 .pill{padding:2px 8px;border-radius:10px;font-weight:600;font-size:12px}
 .w{background:var(--win-bg);color:var(--win)}.l{background:var(--lose-bg);color:var(--lose)}
 .scroll{overflow-x:auto}
@@ -1159,6 +1160,7 @@ function draw(){
   marker(g,b.bot,x,yy,css(st[b.status]));
   if(short){const col=css(st[b.status]),ty=yy+(up?-28:28);
    const [lx,ly,tw]=label(x+12,ty,`${hm(b.t)} ${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''} ${b.level||''} → ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,col);g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yy);g.lineTo(lx>x?lx:lx+tw,ly);g.stroke();g.setLineDash([])}}
+ if(HL&&HL.until>Date.now()&&HL.t>=tL&&HL.t<=tR){const y=at(HL.t);if(y!=null){const x=X(HL.t),yy=Y(y);g.strokeStyle=css('--fg');g.lineWidth=2.5;g.beginPath();g.arc(x,yy,13,0,6.283);g.stroke();g.strokeStyle='#ffd400';g.lineWidth=1.5;g.beginPath();g.arc(x,yy,16,0,6.283);g.stroke()}}
  // live 15-min contract: Kalshi YES price, model and difference, in a small tag just right of the live price, by its target line
  const S=D.session,Q=(D.q15||[]).at(-1);
  if(S&&S.strike&&Q&&last&&S.open_ts<=tR&&S.close_ts>=tL){const yb=Q[1],ya=Q[2],m=Q[3];
@@ -1250,11 +1252,17 @@ function q15(){const R=D.q15||[],s=D.session||{};
   const da=a[3]-a[2],db=b[3]-b[2];g.strokeStyle=dcol(db*100);g.beginPath();g.moveTo(X(a[0]),Y(da));g.lineTo(X(b[0]),Y(db));g.stroke()}
  g.globalAlpha=1;
  line(2,css('--yes'),[]);line(3,css('--fg'),[4,3])}
-let TSIG=-1;
+let TSIG=-1,TROWS=[],HL=null,hlTimer=0;
+// click a row in the trades table: bring that trade's marker into view on the chart and ring it for a few seconds
+$('trades').addEventListener('click',e=>{const tr=e.target.closest('tr.trrow');if(!tr||!D)return;const r=TROWS[+tr.dataset.i];if(!r)return;
+ const k=String(fkey(r));if(HID.has(k)){HID.delete(k);try{localStorage.setItem(HKEY,JSON.stringify([...HID]))}catch(err){}buildFilters()}
+ const [T0]=range();follow=false;sc.scrollLeft=Math.max(0,(r.t-T0)*pps()-sc.clientWidth/2);
+ HL={t:r.t,until:Date.now()+8000};clearTimeout(hlTimer);hlTimer=setTimeout(()=>{HL=null;draw()},8100);
+ sc.scrollIntoView({behavior:'smooth',block:'start'});syncSlider();draw()});
 function trades(){if(!H||HV===TSIG)return;TSIG=HV;
  const R=[];
  for(const r of H.range||[])R.push({t:r.t,bot:r.bot||'Range',mkt:`${r.lo==null?'':usd(r.lo)}–${r.hi==null?'':usd(r.hi+0.01).slice(1)} · ${hm(r.close)}${r.bot==='FP range'&&r.level?' · '+r.level:''}`,
-  side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl,cost:r.cost});
+  side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl,cost:r.cost,acct:r.acct});
  for(const b of H.buys||[])R.push({t:b.t,bot:b.bot,mkt:`15-min ${hm(Math.floor(b.t/900)*900+900)} · ${b.level||''}`,
   side:b.side,n:b.n,price:b.price!=null?b.price:b.ask,model:null,status:b.status,pnl:b.pnl,cost:b.cost});
  R.sort((a,b)=>a.t-b.t);
@@ -1273,9 +1281,9 @@ function trades(){if(!H||HV===TSIG)return;TSIG=HV;
  for(let i=R.length-1;i>=0;i--){const r=R[i];const d=new Date(r.t*1000).toLocaleDateString('en-US',{timeZone:'America/New_York',month:'numeric',day:'numeric'});
   const res=r.status==='open'?'<span class="pill" style="color:var(--open)">open</span>':`<span class="pill ${r.status==='won'?'w':'l'}">${r.status==='won'?'Won':'Lost'}</span>`;
   const pc=v=>v==null?'<span class="mut">–</span>':`<span style="color:var(${v>=0?'--win':'--lose'})">${money(v)}</span>`;
-  rows+=`<tr><td>${d} ${hm(r.t)}</td><td>${mk(r)} ${r.bot}</td><td>${r.mkt}</td><td>${r.side||''}</td><td>${r.n||''}</td><td>${r.price!=null?cents(r.price):'–'}</td><td>${r.model!=null?cents(r.model):'<span class="mut">–</span>'}</td><td>${res}</td><td>${r.amodel!=null?cents(r.amodel):'–'}</td><td>${r.aprice!=null?cents(r.aprice):'–'}</td><td>${r.awin!=null?(r.awin*100).toFixed(1)+'%':'–'}</td><td>${r.cost!=null?'$'+r.cost.toFixed(2):'–'}</td><td>${r.spent!=null?'$'+r.spent.toFixed(2):'–'}</td><td>${pc(r.pnl)}</td><td>${pc(r.cum)}</td><td>${pc(r.avg)}</td></tr>`}
+  rows+=`<tr class="trrow" data-i="${i}" title="Click to show this trade on the chart"><td>${d} ${hm(r.t)}</td><td>${mk(r)} ${r.bot}</td><td>${r.mkt}</td><td>${r.side||''}</td><td>${r.n||''}</td><td>${r.price!=null?cents(r.price):'–'}</td><td>${r.model!=null?cents(r.model):'<span class="mut">–</span>'}</td><td>${res}</td><td>${r.amodel!=null?cents(r.amodel):'–'}</td><td>${r.aprice!=null?cents(r.aprice):'–'}</td><td>${r.awin!=null?(r.awin*100).toFixed(1)+'%':'–'}</td><td>${r.cost!=null?'$'+r.cost.toFixed(2):'–'}</td><td>${r.spent!=null?'$'+r.spent.toFixed(2):'–'}</td><td>${pc(r.pnl)}</td><td>${pc(r.cum)}</td><td>${pc(r.avg)}</td></tr>`}
  if(!R.length)rows+='<tr><td colspan="16" class="mut">No trades yet.</td></tr>';
- $('trades').innerHTML=rows}
+ TROWS=R;$('trades').innerHTML=rows}
 function tables(px){q15();trades();
  let rows='<tr><th>Bought (ET)</th><th>Side</th><th>Band</th><th>Contracts</th><th>Paid</th><th>Model</th><th>Now</th><th>Closes</th></tr>';
  const ps=D.range.open.filter(p=>p.lo!=null);
