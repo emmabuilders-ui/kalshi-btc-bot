@@ -989,7 +989,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><b style="color:var(--sup)">╌</b> rising support / <b style="color:var(--res)">╌</b> falling resistance trend lines (5-min swings), × = break</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin: 60-second BRTI average (black, what Kalshi settles on), BRTI each second (light gray), and every trade</div><canvas id="c"></canvas>
-<div class="nor5"><div class="lbl" style="margin-top:6px">Kalshi YES ask (up) and NO ask (down) in cents, centered on 0: 15-minute contract on top, the hourly band BTC is inside below <span class="mut" style="font-weight:400">· recorded from when this was first deployed</span></div><canvas id="qp"></canvas></div>
+<div class="nor5"><div class="lbl" style="margin-top:6px">Kalshi YES ask (up) and NO ask (down) in cents, centered on 0: the 15-minute contract and the hourly band BTC is inside, overlaid, a line every 10¢ <span class="mut" style="font-weight:400">· recorded from when this was first deployed</span></div><canvas id="qp"></canvas></div>
 <div style="display:flex;align-items:center;gap:10px;margin-top:6px"><span class="mut" id="slL" style="font-size:12px;white-space:nowrap"></span>
 <input type="range" id="slider" min="0" max="1000" value="1000" style="flex:1;accent-color:var(--ladder-t);height:22px" aria-label="Move through the history">
 <span class="mut" id="slR" style="font-size:12px;white-space:nowrap">now</span></div>
@@ -1404,24 +1404,25 @@ syncBandBtns();
 let QT=[];
 async function loadQuotes(){try{const since=QT.length?QT[QT.length-1][0]:0;const add=await get('quotes.json?since='+since,15000);
  if(add.length){QT=QT.concat(add);draw()}}catch(e){}}
-function qpanel(tL,tR){const cv=$('qp');if(!cv)return;const LH=112,h=LH*2+22,[g,w]=setup(cv,h),L=66,R=GUT,X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
- const lane=(top,ci,name)=>{const mid=top+LH/2,sc=(LH/2-6)/100;   // 100 cents = full half-lane
-  g.strokeStyle=css('--grid2');g.lineWidth=1;g.setLineDash([]);g.beginPath();g.moveTo(L,mid+.5);g.lineTo(w-R,mid+.5);g.stroke();
-  g.setLineDash([2,4]);for(const c of [50,-50]){g.beginPath();g.moveTo(L,mid-c*sc);g.lineTo(w-R,mid-c*sc);g.stroke()}g.setLineDash([]);
-  g.fillStyle=css('--mut');g.font='10px system-ui';g.textAlign='right';for(const c of [100,50,0,-50,-100])g.fillText((c>0?'YES ':c<0?'NO ':'')+Math.abs(c)+'¢',L-4,mid-c*sc+3.5);g.textAlign='left';
-  g.fillText(name,L+4,top+11);
-  const pts=QT.filter(r=>r[0]>=tL-120&&r[0]<=tR+120&&r[ci]!=null&&r[ci+1]!=null);
-  const area=(sign,col)=>{g.fillStyle=col;g.strokeStyle=col;g.lineWidth=1.3;
-   const seg=[];let cur=[];for(const r of pts){if(cur.length&&r[0]-cur[cur.length-1][0]>120){seg.push(cur);cur=[]}cur.push(r)}if(cur.length)seg.push(cur);
-   for(const s of seg){const v=r=>sign>0?r[ci+1]:1-r[ci];
-    g.globalAlpha=.22;g.beginPath();g.moveTo(X(s[0][0]),mid);for(const r of s)g.lineTo(X(r[0]),mid-sign*v(r)*100*sc);g.lineTo(X(s[s.length-1][0]),mid);g.closePath();g.fill();
-    g.globalAlpha=1;g.beginPath();s.forEach((r,i)=>{const x=X(r[0]),y=mid-sign*v(r)*100*sc;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}};
-  // row: [t, 15-min YES bid, ask, hourly YES bid, ask]; lane ci is the bid column. YES ask = r[ci+1], NO ask = 1 - YES bid.
-  area(1,css('--yes'));area(-1,css('--no'))};
- timegrid(g,X,tL,tR,0,18,h,true);
- g.save();g.beginPath();g.rect(L,0,w-L-R,h-18);g.clip();
- lane(0,1,'15-minute contract');lane(LH+4,3,'hourly band BTC is inside');
- g.restore()}
+function qpanel(tL,tR){const cv=$('qp');if(!cv)return;const LH=240,h=LH+22,[g,w]=setup(cv,h),L=66,R=GUT,X=t=>L+(t-tL)/(tR-tL)*(w-L-R),mid=LH/2,sc=(LH/2-8)/100;
+ const Yc=c=>mid-c*sc;
+ timegrid(g,X,tL,tR,0,22,h,true);
+ g.save();g.beginPath();g.rect(L,0,w-L-R,LH);g.clip();
+ // a line every 10 cents, stronger at 0 and +-50
+ for(let c=-100;c<=100;c+=10){g.strokeStyle=css(c===0?'--fg':'--grid2');g.globalAlpha=c===0?.8:c%50===0?.7:.35;g.lineWidth=1;g.setLineDash(c===0||c%50===0?[]:[2,3]);g.beginPath();g.moveTo(L,Math.round(Yc(c))+.5);g.lineTo(w-R,Math.round(Yc(c))+.5);g.stroke()}
+ g.globalAlpha=1;g.setLineDash([]);
+ // row: [t, 15-min YES bid, ask, hourly YES bid, ask]. YES ask = r[ci+1], NO ask = 1 - YES bid = 1 - r[ci]. Gaps over 2 min break the line.
+ const series=(ci,sign,col,fill,dash,lw)=>{const pts=QT.filter(r=>r[0]>=tL-120&&r[0]<=tR+120&&r[ci]!=null&&r[ci+1]!=null);
+  const seg=[];let cur=[];for(const r of pts){if(cur.length&&r[0]-cur[cur.length-1][0]>120){seg.push(cur);cur=[]}cur.push(r)}if(cur.length)seg.push(cur);
+  const v=r=>sign>0?r[ci+1]:1-r[ci];g.strokeStyle=col;g.fillStyle=col;g.lineWidth=lw;g.setLineDash(dash);
+  for(const sg of seg){if(fill){g.globalAlpha=.16;g.beginPath();g.moveTo(X(sg[0][0]),Yc(0));for(const r of sg)g.lineTo(X(r[0]),Yc(sign*v(r)*100));g.lineTo(X(sg[sg.length-1][0]),Yc(0));g.closePath();g.fill();g.globalAlpha=1}
+   g.beginPath();sg.forEach((r,i)=>{const x=X(r[0]),y=Yc(sign*v(r)*100);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}g.setLineDash([])};
+ series(1,1,css('--yes'),true,[],1.8);series(1,-1,css('--no'),true,[],1.8);       // 15-minute contract: solid, shaded
+ series(3,1,css('--yes'),false,[6,3],1.6);series(3,-1,css('--no'),false,[6,3],1.6);   // hourly band: dashed
+ g.restore();
+ g.fillStyle=css('--mut');g.font='10px system-ui';g.textAlign='right';
+ for(let c=-100;c<=100;c+=10)g.fillText((c>0?'YES ':c<0?'NO ':'')+Math.abs(c)+'¢',L-4,Yc(c)+3.5);
+ g.textAlign='left';g.fillText('solid = 15-minute contract · dashed = hourly band BTC is inside · YES ask above 0, NO ask below',L+4,10)}
 let TSIG=-1,TROWS=[],HL=null,hlTimer=0;
 // click a row in the trades table: bring that trade's marker into view on the chart and ring it for a few seconds
 $('trades').addEventListener('click',e=>{const tr=e.target.closest('tr.trrow');if(!tr||!D)return;const r=TROWS[+tr.dataset.i];if(!r)return;
