@@ -49,3 +49,8 @@ Held-out period: Sep 1 to Oct 25 2026. No machine-learning model is trained here
 16. `wf4.py <model>`: refits the chosen candidates on Dec-Aug, predicts Sep-Oct frozen and with weekly expanding refits.
 17. `score4.py`: Brier vs Kalshi, cents and months better, trades, and every cent x minute-left grid.
 BTC spot is not used: spot files cover only Aug to Oct, so Dec-Aug training would lack it.
+
+## Kalshi vs all models (compare_all.py, monthly.py, weakest.py)
+- compare_all.py: Sep–Oct, 19 models vs Kalshi price by time-left x 10c band (Brier, calibration miss).
+- monthly.py: same by month Mar–Oct (Mar–Aug only out-of-fold models; static/vol flagged in-sample).
+- weakest.py: month x time x price cells sorted by Kalshi % wrong (actual win % − Kalshi avg price), z on contracts; plus pooled Mar–Oct with months-same-sign.
