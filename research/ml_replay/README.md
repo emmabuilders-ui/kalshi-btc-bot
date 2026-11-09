@@ -54,3 +54,6 @@ BTC spot is not used: spot files cover only Aug to Oct, so Dec-Aug training woul
 - compare_all.py: Sep–Oct, 19 models vs Kalshi price by time-left x 10c band (Brier, calibration miss).
 - monthly.py: same by month Mar–Oct (Mar–Aug only out-of-fold models; static/vol flagged in-sample).
 - weakest.py: month x time x price cells sorted by Kalshi % wrong (actual win % − Kalshi avg price), z on contracts; plus pooled Mar–Oct with months-same-sign.
+
+## Pivot workbook (pivot_data.py, pivot_build.py)
+- Long table month x minute-left x 10c band x model; Excel pivot tables built through LibreOffice UNO (soffice listening on port 2002).
