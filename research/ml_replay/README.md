@@ -14,3 +14,13 @@ Run in order (outputs go to `work/`):
 7. `drift.py`: weekly Kalshi win rate minus price per 10c bucket with PELT change-point detection.
 
 Held-out period: Sep 1 to Oct 25 2026. No machine-learning model is trained here.
+
+## Step 5: four models (no Kalshi data after the snapshot second is used anywhere)
+
+8. `features.py`: BRTI returns over 10 s to 15 min, 1/5/15/60-min volatility, distance in volatility units, position vs the
+   contract's high and low so far, volume, quote ages, hour and weekday.
+9. `models.py`: gradient-boosted trees. Direct outcome model (BRTI features only) and correction model (plus Kalshi price).
+   Walk-forward: monthly expanding refits for Feb to Aug, one frozen Dec-Aug fit for Sep-Oct, and a weekly-refit variant.
+   Regime-switching gate: 27 cells (volatility tercile x minutes-left group x price group), picking the expert with the
+   lowest Brier on prior out-of-fold rows. Rolling recalibration comes from step 3.
+10. `score5.py`: Brier with day-block bootstrap CIs vs Kalshi, AUC, Brier by price and minutes left, trades at 5/7/10 points.
