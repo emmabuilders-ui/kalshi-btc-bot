@@ -24,3 +24,11 @@ Held-out period: Sep 1 to Oct 25 2026. No machine-learning model is trained here
    Regime-switching gate: 27 cells (volatility tercile x minutes-left group x price group), picking the expert with the
    lowest Brier on prior out-of-fold rows. Rolling recalibration comes from step 3.
 10. `score5.py`: Brier with day-block bootstrap CIs vs Kalshi, AUC, Brier by price and minutes left, trades at 5/7/10 points.
+
+## Order-flow test
+
+11. `build_flow.py`: per contract and snapshot, from the trade files: buyer-minus-seller volume share over 10/30/60/180 s and since
+    open, volume and trade counts, VWAP vs mid, last-trade price change, large-trade (100+ contracts) imbalance. All at or before
+    the snapshot second. May to Jul has no trade files, so those months are excluded.
+12. `models_of.py`, `score_of.py`: the same walk-forward with and without order flow on identical rows (Feb-Apr and Aug
+    out-of-fold, Sep-Oct holdout frozen and weekly refit).
