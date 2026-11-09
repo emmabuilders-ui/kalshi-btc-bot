@@ -38,3 +38,14 @@ Held-out period: Sep 1 to Oct 25 2026. No machine-learning model is trained here
 13. `recal15.py`: for each Sep-Oct contract, refits a logistic calibration (logit p, logit p x minutes left, minutes left) on
     contracts that closed at or before it opened, over trailing 1, 7 and 30 days. Applied to Kalshi mid and to the weekly-refit
     correction and direct models. `score_recal15.py` scores it.
+
+## Step 4: automatic feature discovery
+
+14. `autofeat.py`: 111 generated features at each snapshot: BRTI log returns over 13 lags (1 s to 1 h), volatility, mean absolute
+    move and trend efficiency over 9 windows, distance from rolling highs/lows and range, strike position in range, distance to
+    strike in units of each volatility, return z-scores, volatility ratios, drift-projected distance, Kalshi mid changes over
+    1/2/3/5 minutes, previous contract's move, hour and weekday.
+15. `select4.py`: trains on Dec-Jun, ranks features by permutation importance on Jul-Aug, picks feature counts on Jul-Aug.
+16. `wf4.py <model>`: refits the chosen candidates on Dec-Aug, predicts Sep-Oct frozen and with weekly expanding refits.
+17. `score4.py`: Brier vs Kalshi, cents and months better, trades, and every cent x minute-left grid.
+BTC spot is not used: spot files cover only Aug to Oct, so Dec-Aug training would lack it.
