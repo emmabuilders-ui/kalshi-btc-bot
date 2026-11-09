@@ -32,3 +32,9 @@ Held-out period: Sep 1 to Oct 25 2026. No machine-learning model is trained here
     the snapshot second. May to Jul has no trade files, so those months are excluded.
 12. `models_of.py`, `score_of.py`: the same walk-forward with and without order flow on identical rows (Feb-Apr and Aug
     out-of-fold, Sep-Oct holdout frozen and weekly refit).
+
+## Recalibration every 15 minutes
+
+13. `recal15.py`: for each Sep-Oct contract, refits a logistic calibration (logit p, logit p x minutes left, minutes left) on
+    contracts that closed at or before it opened, over trailing 1, 7 and 30 days. Applied to Kalshi mid and to the weekly-refit
+    correction and direct models. `score_recal15.py` scores it.
