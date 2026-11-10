@@ -31,3 +31,24 @@ At every check the edge must also stay above zero if each fill were 1c worse tha
 - Report gap size against outcome with Kendall tau at each check.
 
 Run `python research/ml_replay/paper_check.py <trades.csv> direct|correction` to print the current status.
+
+## Longshot bot (`kalshi-longshot`), added 2026-11-10
+
+Rule: a 15-minute side priced 15c or less, bought when the normal fair value (distance to the strike divided by the
+15-minute volatility times the square root of the time left) beats the ask plus the taker fee by 8 points; first
+qualifying minute per contract, 1-14 minutes left, 20 contracts, held to settlement. Paper only.
+
+Backtest of the shipped code: Dec-Aug +1.94c per contract (1,497 trades), Sep-Oct +2.46c (184 trades). Both periods
+were used to find the rule, so neither is a holdout.
+
+Decision, fixed before the first paper trade and not to be changed afterwards. Judge on paper fills only, by win %
+minus average price paid after the fee, with the win % always shown beside the price. Per-trade standard deviation is
+about 30c at these prices, so the standard error is roughly 30c/sqrt(n).
+
+- At 300 trades (about 7 weeks at 5-6 trades a day, standard error about 1.7c): edge under +1.0c retires the bot.
+- At 800 trades (about 5 months, standard error about 1.1c): +2.0c or more with t at least 2 may be considered for
+  small real size, which is Michael's call alone; under +1.0c retires it; in between runs on to 1,300 trades.
+- Report the edge at the logged fills and again with each fill 1c worse, since a longshot ask moves easily.
+- No changes to the margin, the 15c ceiling, the minutes checked or the side during the test. Any condition added
+  from signals.csv counts only on data after the day it was coded.
+- No new scans of Dec-Oct to rescue the bot. Live trading stays locked off.

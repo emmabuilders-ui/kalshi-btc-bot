@@ -41,3 +41,12 @@ Distance expressed as the share of trailing 60- or 120-minute moves over the sam
 Dec-Aug), overstates odds more at the top (predicts 17%, reality 10%), and the margin rule loses on Sep-Oct at every
 margin (e.g. 8c: Dec-Aug +1.49c, Sep-Oct -1.56c). The SD uses all 3,600 one-second returns in the window; the percentile
 has only ~60 independent moves of a 1-minute horizon, so it is coarser.
+
+## The paper bot (`kalshi_btc_bot/longshot_paper.py`, 2026-11-10, Michael said "build it")
+Service `kalshi-longshot`, logs `/opt/kalshi-logs-longshot/longshot` pushed to the `paper-logs-longshot` branch,
+dashboard tile and Performance-by-bot row ("Longshot (15c or less)", marker x). Paper only, 20 contracts, no orders.
+`replay_bot.py` replays the shipped decision code over Dec-Oct and is the number to quote:
+Dec-Aug 1,497 trades 12.49% vs 9.94c +1.94c (t 2.3, 7/9 months); Sep-Oct 184 trades 12.50% vs 9.45c +2.46c
+(t 1.0, Sep -0.1c, Oct +4.1c). It differs from the scan above because `1 - 0.85` is a shade over 0.15 in floating
+point, so the scan dropped sides priced at exactly 15c; the bot rounds to four decimals and keeps them, and those
+are the worse trades. The 8-point margin was fixed before that was found and was not re-picked.
