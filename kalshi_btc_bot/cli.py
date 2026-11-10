@@ -113,6 +113,12 @@ def main(argv=None) -> None:
     mg.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     mg.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    cg = sub.add_parser("paper-corr-gap", help="paper trade the Correction ML model-gap rule on the 15-min markets (NO side, no orders are sent)")
+    cg.add_argument("--out", default="runs/corr-gap")
+    cg.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
+    cg.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    cg.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     d = sub.add_parser("dashboard", help="serve a live chart of the paper bots (read-only)")
     d.add_argument("--port", type=int, default=8080)
     d.add_argument("--token-file", default="/etc/kalshi-bot/dash_token", help="file holding the secret page path")
@@ -129,6 +135,7 @@ def main(argv=None) -> None:
     d.add_argument("--squeeze", default="/opt/kalshi-logs-squeeze/squeeze")
     d.add_argument("--squeeze-maker", default="/opt/kalshi-logs-squeeze-maker/squeeze-maker")
     d.add_argument("--model-gap", default="/opt/kalshi-logs-model-gap/model-gap")
+    d.add_argument("--corr-gap", default="/opt/kalshi-logs-corr-gap/corr-gap")
 
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
@@ -206,6 +213,9 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-model-gap":
         from .model_gap_paper import from_env as mg_env
         mg_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-corr-gap":
+        from .model_gap_paper import corr_from_env
+        corr_from_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "dashboard":
         from pathlib import Path
         from .dashboard import serve
@@ -214,7 +224,7 @@ def main(argv=None) -> None:
                "range5": Path(a.range5), "fastpush_range": Path(a.fastpush_range), "favorite": Path(a.favorite),
                "trend_broad": Path(a.trend_broad), "trend_tight": Path(a.trend_tight), "maker": Path(a.maker), "quiet": Path(a.quiet),
                "squeeze": Path(a.squeeze), "squeeze_maker": Path(a.squeeze_maker),
-               "model_gap": Path(a.model_gap)})
+               "model_gap": Path(a.model_gap), "corr_gap": Path(a.corr_gap)})
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)

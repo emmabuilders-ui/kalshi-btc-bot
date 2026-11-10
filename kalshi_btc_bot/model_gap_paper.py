@@ -60,8 +60,8 @@ class DirectModel:
         self.name = spec.get("name", "")
 
     @classmethod
-    def load(cls) -> "DirectModel":
-        txt = resources.files("kalshi_btc_bot").joinpath("data/model_gap_direct.json").read_text()
+    def load(cls, file: str = "model_gap_direct.json") -> "DirectModel":
+        txt = resources.files("kalshi_btc_bot").joinpath("data/" + file).read_text()
         return cls(json.loads(txt))
 
     def predict(self, feats: dict) -> float:
@@ -117,7 +117,17 @@ def book_asks(book: dict) -> dict:
     return out
 
 
-def evaluate(f: dict, p_yes: float, asks: dict, pre_hi: float, pre_lo: float) -> dict:
+def kalshi_inputs(book: dict, volume: float) -> dict | None:
+    """Correction-model inputs from the live book: x = logit of the YES mid, spread = YES ask - YES bid, and
+    log(1 + contracts traded so far). None when either side of the book is empty."""
+    yb, ya = book.get("yes_bid"), book.get("yes_ask")
+    if yb is None or ya is None:
+        return None
+    mid = min(max((yb + ya) / 2, 1e-4), 1 - 1e-4)
+    return {"x": math.log(mid / (1 - mid)), "spread": ya - yb, "log_cumvol": math.log1p(max(volume, 0.0)), "mid": mid}
+
+
+def evaluate(f: dict, p_yes: float, asks: dict, pre_hi: float, pre_lo: float, min_gap: float = MIN_GAP) -> dict:
     """Decide one minute check. Returns the look (or None) and every number behind it."""
     out = {"p_yes": p_yes, "look": None}
     for side in ("yes", "no"):
@@ -126,7 +136,7 @@ def evaluate(f: dict, p_yes: float, asks: dict, pre_hi: float, pre_lo: float) ->
         prob = p_yes if side == "yes" else 1 - p_yes
         g = gap(prob, ask) if ask is not None else None
         out[f"{side}_ask"], out[f"{side}_gap"] = ask, g
-        if ask is not None and PX_MIN <= ask <= PX_MAX and g >= MIN_GAP:
+        if ask is not None and PX_MIN <= ask <= PX_MAX and g >= min_gap:
             out["look"] = side
     side = out["look"]
     sgn = 1 if side == "yes" else -1
@@ -136,11 +146,11 @@ def evaluate(f: dict, p_yes: float, asks: dict, pre_hi: float, pre_lo: float) ->
     return out
 
 
-def limit_price(prob_side: float, levels: list[list[float]]) -> float:
-    """Highest book price that still leaves a gap of at least MIN_GAP (capped at PX_MAX)."""
+def limit_price(prob_side: float, levels: list[list[float]], min_gap: float = MIN_GAP) -> float:
+    """Highest book price that still leaves a gap of at least min_gap (capped at PX_MAX)."""
     lim = 0.0
     for p, _ in levels:
-        if p <= PX_MAX and gap(prob_side, p) >= MIN_GAP:
+        if p <= PX_MAX and gap(prob_side, p) >= min_gap:
             lim = max(lim, p)
     return lim
 
@@ -148,10 +158,15 @@ def limit_price(prob_side: float, levels: list[list[float]]) -> float:
 # ----------------------------------------------------------------------------- the bot
 class ModelGapPaper(SqueezePaper):
     BOT = "Model gap"
+    MODEL_FILE = "model_gap_direct.json"
+    CHECKS = CHECK_KS
+    GAP = MIN_GAP
+    USES_KALSHI = False          # the model also needs Kalshi's price, spread and volume
+    NEEDS_CONDITION = True       # cushion or breakout required
 
     def __init__(self, out, key_id=None, key_path=None, push_logs: bool = False, contracts: int = CONTRACTS,
                  model: DirectModel | None = None):
-        self.model = model or DirectModel.load()
+        self.model = model or DirectModel.load(self.MODEL_FILE)
         self.looked: set[str] = set()          # tickers whose one look has been used
         self._pre: dict[str, tuple[float, float]] = {}
         super().__init__(out, key_id=key_id, key_path=key_path, push_logs=push_logs, contracts=contracts, max_lag=MAX_LAG)
@@ -171,7 +186,7 @@ class ModelGapPaper(SqueezePaper):
         if not m or not m["open_ts"] <= t < m["close_ts"] or m["ticker"] in self.looked:
             return
         k, r = divmod(t - m["open_ts"], 60)
-        if r or k not in CHECK_KS:
+        if r or k not in self.CHECKS:
             return
         if self.wall() - t > MAX_LAG:
             self._row(t, m, None, None, None, f"skip: check is {self.wall() - t}s late")
@@ -190,41 +205,48 @@ class ModelGapPaper(SqueezePaper):
             self._row(t, m, None, None, None, "skip: BRTI history missing")
             return
         f = features(sec, t, m["open_ts"], m["close_ts"], m["strike"])
-        p_yes = self.model.predict(f)
+        p_yes = None if self.USES_KALSHI else self.model.predict(f)
         try:
             book = self.k.orderbook(m["ticker"])
+            if self.USES_KALSHI:
+                kin = kalshi_inputs(book, self.k.volume(m["ticker"]))
+                if kin is None:
+                    self._row(t, m, f, None, None, "skip: one side of the book is empty")
+                    return
+                f.update(kin)
+                p_yes = self.model.predict(f)
         except Exception as e:
             log.warning("orderbook failed: %s", e)
             self._row(t, m, f, p_yes, None, "skip: order book unavailable")
             return
         asks = book_asks(book)
         hi, lo = self._pre_levels(m)
-        ev = evaluate(f, p_yes, asks, hi, lo)
+        ev = evaluate(f, p_yes, asks, hi, lo, self.GAP)
         ev["pre_hi"], ev["pre_lo"] = hi, lo
         side = ev["look"]
         if side is None:
-            self._row(t, m, f, p_yes, ev, "no look (no side 70-99c with a 3-point gap)")
+            self._row(t, m, f, p_yes, ev, f"no look (no side 70-99c with a {100 * self.GAP:g}-point gap)")
             return
         self.looked.add(m["ticker"])
         self._save_state()
         if side not in TRADE_SIDES:
             self._row(t, m, f, p_yes, ev, f"skip: {side.upper()} side is not in the rule")
             return
-        if not ev["condition"]:
+        if self.NEEDS_CONDITION and not ev["condition"]:
             self._row(t, m, f, p_yes, ev, "skip: no cushion and no breakout")
             return
         prob = p_yes if side == "yes" else 1 - p_yes
         other = book.get("no_bids" if side == "yes" else "yes_bids") or []
-        n, avg = fill(other, self.contracts, limit_price(prob, asks[side]))
+        n, avg = fill(other, self.contracts, limit_price(prob, asks[side], self.GAP))
         if not n:
-            self._row(t, m, f, p_yes, ev, "skip: nothing to buy with a 3-point gap")
+            self._row(t, m, f, p_yes, ev, f"skip: nothing to buy with a {100 * self.GAP:g}-point gap")
             return
         fee = kalshi_fee(n, avg)
         self.traded.add(m["close_ts"])
         self._save_state()
         self._row(t, m, f, p_yes, ev, f"BUY {side.upper()}", contracts=n, avg_price=round(avg, 4))
         self.unsettled.append({"time_utc": _iso(t), "ticker": m["ticker"], "side": side.upper(),
-                               "level": "cushion" if ev["cushion"] > CUSHION_MIN else "breakout",
+                               "level": ("cushion" if ev["cushion"] > CUSHION_MIN else "breakout" if ev["breakout"] else "gap only"),
                                "secs_left": m["close_ts"] - t, "model_prob": round(prob, 4),
                                "gap_pts": round(100 * gap(prob, avg), 2), "contracts": n, "avg_price": round(avg, 4),
                                "fee": fee, "cost": round(n * avg + fee, 2), "close_ts": m["close_ts"],
@@ -245,10 +267,39 @@ class ModelGapPaper(SqueezePaper):
                "pre_open_hi": r(ev.get("pre_hi"), 2), "pre_open_lo": r(ev.get("pre_lo"), 2),
                "z": r(f["z"] if f else None, 3), "sig15": r(f["sig15"] if f else None, 8),
                "ret_300": r(f["ret_300"] if f else None, 6),
+               "kalshi_mid": r(f.get("mid") if f else None), "spread": r(f.get("spread") if f else None),
+               "log_cumvol": r(f.get("log_cumvol") if f else None, 3),
                "decision": decision, "contracts": "", "avg_price": ""}
         row.update(extra)
         self._append("signals.csv", row)
         log.info("%s %s -> %s", m["ticker"], row["side"] or "-", decision)
+
+
+class CorrectionGapPaper(ModelGapPaper):
+    """Same bot with the "Correction ML" model (Michael 2026-11-10, "add this to the bot too").
+
+    * Model: gradient-boosted trees on the Direct ML inputs plus Kalshi's own YES mid (as log-odds), the YES spread and
+      log(1 + contracts traded so far). The research version also used how old the last trade on each side was; the
+      live bot reads a fresh order book instead of trade prints, so this version is fit without those two inputs.
+      Fit once on Dec 10 2025 - Aug 31 2026 and frozen (data/model_gap_correction.json).
+    * Checks at 1-9 minutes after the open (14 down to 6 minutes left), as the Direct bot. The first minute a side's
+      ask is 70-99c with model - ask - fee >= 3 points is the contract's one look; only NO is bought, with no
+      cushion/breakout condition.
+    Backtest (one trade per contract; win % vs average price, after fee), research/ml_replay/corr_live.py:
+      Mar-Aug (monthly out-of-fold): 2,830 trades, 81.0% vs 78.8c, +1.10c per contract, 4 of 6 months positive
+      Sep-Oct (frozen fit):            685 trades, 82.6% vs 77.2c, +4.26c per contract, 2 of 2 months positive
+    Mar-Aug is weak (t 1.5), and the setup was picked after many looks at Sep-Oct, so only the paper test is clean.
+    """
+    BOT = "Correction gap"
+    MODEL_FILE = "model_gap_correction.json"
+    CHECKS = CHECK_KS
+    GAP = 0.03
+    USES_KALSHI = True
+    NEEDS_CONDITION = False
+
+
+def corr_from_env(out: str, push_logs: bool, contracts: int = CONTRACTS) -> CorrectionGapPaper:
+    return CorrectionGapPaper(out, os.environ.get("KALSHI_KEY_ID"), os.environ.get("KALSHI_KEY_FILE"), push_logs, contracts)
 
 
 def from_env(out: str, push_logs: bool, contracts: int = CONTRACTS) -> ModelGapPaper:

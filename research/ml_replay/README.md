@@ -57,3 +57,17 @@ BTC spot is not used: spot files cover only Aug to Oct, so Dec-Aug training woul
 
 ## Pivot workbook (pivot_data.py, pivot_build.py)
 - Long table month x minute-left x 10c band x model; Excel pivot tables built through LibreOffice UNO (soffice listening on port 2002).
+
+## Correction ML paper bot (2026-11-10)
+`corr_live.py` refits Correction ML without the two quote-age inputs (the live bot reads a fresh order book, not trade
+prints): monthly out-of-fold Mar-Aug, frozen Dec-Aug fit for Sep-Oct. `export_corr.py` writes the frozen trees to
+`kalshi_btc_bot/data/model_gap_correction.json` (pure-Python predictions equal scikit-learn's exactly).
+Rule (`CorrectionGapPaper`): NO 70-99c, model - ask - fee >= 3 pts, 6-14 min left, first look per contract.
+| Period | Trades | Win % vs avg price | After fee |
+|---|---|---|---|
+| Mar-Aug | 2,830 | 81.0 vs 78.8 | +1.10c (4/6 months, t 1.5) |
+| Sep-Oct | 685 | 82.6 vs 77.2 | +4.26c (t 3.0) |
+Replaying the bot's decision code (which stops at the first look on either side) gives 678 Sep-Oct trades, +4.33c.
+
+`backfill.py` refits every other model walk-forward through Mar-Aug (static, vol, weekly ML, 15-min recal,
+order flow where taker side exists, auto features with feature ranking redone on data before March).

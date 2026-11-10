@@ -230,6 +230,12 @@ class KalshiClient:
         from .recorder import parse_book
         return parse_book(self.get(f"/markets/{ticker}/orderbook", depth=20), depth=20)
 
+    def volume(self, ticker: str) -> float:
+        """Contracts traded so far in this market."""
+        m = self.get(f"/markets/{ticker}")["market"]
+        v = m.get("volume_fp")
+        return float(v if v not in (None, "") else (m.get("volume") or 0))
+
     def result(self, ticker: str) -> str | None:
         m = self.get(f"/markets/{ticker}")["market"]
         r = (m.get("result") or "").lower()

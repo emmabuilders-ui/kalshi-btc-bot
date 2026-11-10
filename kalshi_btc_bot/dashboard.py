@@ -813,8 +813,10 @@ Dashboard.range5 = _range5
 
 def make_handler(dash: Dashboard, token: str):
     from .dashboard_range5 import PAGE5
+    from .dashboard_models import PAGEM, models_data
     page = PAGE.encode()
     page5 = PAGE5.encode()
+    pagem = PAGEM.encode()
     root = f"/{token}/"
 
     class H(BaseHTTPRequestHandler):
@@ -872,6 +874,14 @@ def make_handler(dash: Dashboard, token: str):
                 self._send(200, page5, "text/html; charset=utf-8")
             elif self.path == root + "range5/data.json":
                 self._send(200, dash.cached("range5", 2, dash.range5), "application/json")
+            elif self.path == root + "models/":
+                self._send(200, pagem, "text/html; charset=utf-8")
+            elif self.path == root + "models/data.json":
+                self._send(200, dash.cached("models", 5, lambda: models_data(dash.logs)), "application/json")
+            elif self.path == root + "models":
+                self.send_response(301)
+                self.send_header("Location", root + "models/")
+                self.end_headers()
             elif self.path == root + "range5":
                 self.send_response(301)
                 self.send_header("Location", root + "range5/")
@@ -981,7 +991,7 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 .navbtn{padding:5px 12px;border:1px solid var(--grid2);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-weight:600;font-size:13px}.navbtn:hover{border-color:var(--ladder-t)}
 body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:var(--card)}
 /*FILTER_CSS*/</style></head><body><div class="wrap">
-<div class="top"><h1 class="nor5">Paper bots, live</h1><a class="nor5 navbtn" href="range5/">5-account range bot →</a><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
+<div class="top"><h1 class="nor5">Paper bots, live</h1><a class="nor5 navbtn" href="range5/">5-account range bot →</a><a class="nor5 navbtn" href="models/">ML model bots →</a><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
 <div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button><button id="bbbtn" aria-pressed="false">Show Bollinger bands</button><button id="kcbtn" aria-pressed="false">Show Keltner channels</button><select id="bandk" aria-label="Bar length for the bands"><option value="5">5-min bars</option><option value="15">15-min bars</option><option value="60">60-min bars</option></select>
 <span class="mut" id="zinfo"></span></div>

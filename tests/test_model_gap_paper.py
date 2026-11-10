@@ -133,3 +133,57 @@ def test_restart_keeps_the_one_look(tmp_path):
     again.k = FakeKalshi([[0.18, 500.0]], [[0.80, 500.0]])
     _run(again, S + 200)
     assert again.k.calls == 0 and len(again.unsettled) == 1               # open trade reloaded, no second buy
+
+
+# ----------------------------------------------------------------------------- correction-model bot
+from kalshi_btc_bot.model_gap_paper import CorrectionGapPaper, kalshi_inputs  # noqa: E402
+
+
+def test_kalshi_inputs_from_book():
+    k = kalshi_inputs({"yes_bid": 0.18, "yes_ask": 0.20}, 1000.0)
+    assert abs(k["x"] - math.log(0.19 / 0.81)) < 1e-12 and abs(k["spread"] - 0.02) < 1e-12
+    assert abs(k["log_cumvol"] - math.log1p(1000)) < 1e-12
+    assert kalshi_inputs({"yes_bid": None, "yes_ask": 0.2}, 5) is None
+
+
+class FakeKalshiVol(FakeKalshi):
+    def orderbook(self, ticker):
+        self.calls += 1
+        yb, nb = self.books["yes_bids"], self.books["no_bids"]
+        return {**self.books, "yes_bid": yb[0][0], "yes_ask": round(1 - nb[0][0], 4)}
+
+    def volume(self, ticker):
+        return 5000.0
+
+
+class SeesKalshi(Stub):
+    def predict(self, f):
+        assert "x" in f and "spread" in f and "log_cumvol" in f
+        return self.p
+
+
+def test_correction_bot_buys_no_on_gap_alone(tmp_path):
+    bot = CorrectionGapPaper(tmp_path, model=SeesKalshi(0.12))        # NO 0.88 vs ask 0.82: gap about 4.97 points
+    bot.k = FakeKalshiVol([[0.18, 500.0]], [[0.80, 500.0]])
+    _run(bot, S + 120, price_after_open=1000.0)                         # BTC at the strike: no cushion, no breakout
+    rows = (tmp_path / "signals.csv").read_text().splitlines()
+    assert "BUY NO" in rows[1] and bot.unsettled[0]["level"] == "gap only"
+    assert bot.unsettled[0]["secs_left"] == 840
+
+
+def test_correction_bot_needs_its_gap(tmp_path):
+    bot = CorrectionGapPaper(tmp_path, model=SeesKalshi(0.10))        # NO 0.90 vs ask 0.82: about 6.9 points
+    bot.k = FakeKalshiVol([[0.18, 500.0]], [[0.80, 500.0]])
+    _run(bot, S + 120, price_after_open=1000.0)
+    assert "BUY NO" in (tmp_path / "signals.csv").read_text().splitlines()[1]
+    bot2 = CorrectionGapPaper(tmp_path / "b", model=SeesKalshi(0.17))  # NO 0.83 vs 0.82: under any gap
+    bot2.k = FakeKalshiVol([[0.18, 500.0]], [[0.80, 500.0]])
+    _run(bot2, S + 120, price_after_open=1000.0)
+    assert not bot2.unsettled
+
+
+def test_frozen_correction_model_matches_reference():
+    m = DirectModel.load("model_gap_correction.json")
+    assert len(m.trees) == 250 and m.features[-3:] == ["x", "spread", "log_cumvol"]
+    f = dict(F0, x=-2.0, spread=0.01, log_cumvol=12.0)
+    assert abs(m.predict(f) - 0.09095584151255706) < 1e-12
