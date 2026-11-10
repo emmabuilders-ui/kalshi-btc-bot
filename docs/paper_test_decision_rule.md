@@ -26,7 +26,8 @@ At every check the edge must also stay above zero if each fill were 1c worse tha
 - No changes to rules, gap, price band, minutes or conditions during the test.
 - A condition added later from `signals.csv` counts only on data after the day it was coded.
 - No new scans of Mar-Oct to rescue a bot.
-- Day one: compare paper fills to the logged asks, and confirm the KXBTC15M fee is 0.07 x p x (1-p).
+- Day one: compare paper fills to the logged asks.
+- Fee confirmed on 2026-11-10 from Kalshi's fee schedule effective July 7, 2026: taker fee is 0.07 x p x (1-p) per contract, rounded up. KXBTC15M has no special multiplier.
 - Report gap size against outcome with Kendall tau at each check.
 
 Run `python research/ml_replay/paper_check.py <trades.csv> direct|correction` to print the current status.
