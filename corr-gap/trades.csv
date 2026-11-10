@@ -1,0 +1,2 @@
+time_utc,ticker,side,level,secs_left,model_prob,gap_pts,contracts,avg_price,fee,cost,result,won,pnl
+2026-11-10 14:16:00,KXBTC15M-26NOV100930-30,NO,gap only,840,0.7882,7.35,20,0.7,0.3,14.3,no,1,5.7
