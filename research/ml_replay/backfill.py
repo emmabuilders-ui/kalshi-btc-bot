@@ -90,23 +90,30 @@ if part == 'auto':         # auto-feature models; feature ranking redone using o
     KAL = ['kmid', 'klogit', 'kspread', 'k_vs_vol'] + [c for c in ALL if c.startswith('kmid_chg')]; DIR = [c for c in ALL if c not in KAL]
     gbm = lambda: HGB(max_iter=300, learning_rate=0.05, max_leaf_nodes=31, min_samples_leaf=300, l2_regularization=1.0, early_stopping=False, random_state=0)
     lasso = lambda: make_pipeline(SimpleImputer(), StandardScaler(), LogisticRegression(penalty='l1', C=0.05, solver='saga', max_iter=300))
-    tr = D[D.close_ts <= ts('2026-02-01')]; va = D[(D.snap_ts >= ts('2026-02-01')) & (D.snap_ts < MAR)]
-    rank = {}
-    for fam, cols in (('correction', ALL), ('direct', DIR)):
-        m = gbm().fit(tr[cols], tr.res); base = np.mean((m.predict_proba(va[cols])[:, 1] - va.res) ** 2); rng = np.random.default_rng(0); imp = {}
-        for c in cols:
-            v = va[cols].copy(); v[c] = rng.permutation(v[c].to_numpy()); imp[c] = np.mean((m.predict_proba(v)[:, 1] - va.res) ** 2) - base
-        rank[fam] = sorted(imp, key=imp.get, reverse=True); log(fam, 'rank', rank[fam][:10])
+    import os
+    if os.path.exists('work/bf_auto_rank.json'): rank = json.load(open('work/bf_auto_rank.json'))
+    else:
+        tr = D[D.close_ts <= ts('2026-02-01')]; va = D[(D.snap_ts >= ts('2026-02-01')) & (D.snap_ts < MAR)]
+        rank = {}
+        for fam, cols in (('correction', ALL), ('direct', DIR)):
+            m = gbm().fit(tr[cols], tr.res); base = np.mean((m.predict_proba(va[cols])[:, 1] - va.res) ** 2); rng = np.random.default_rng(0); imp = {}
+            for c in cols:
+                v = va[cols].copy(); v[c] = rng.permutation(v[c].to_numpy()); imp[c] = np.mean((m.predict_proba(v)[:, 1] - va.res) ** 2) - base
+            rank[fam] = sorted(imp, key=imp.get, reverse=True); log(fam, 'rank', rank[fam][:10])
     json.dump(rank, open('work/bf_auto_rank.json', 'w'))
     CAND = {'p_lasso_corr': (lasso, ALL), 'p_lasso_corr_wk': (lasso, ALL), 'p_gbm_corr_top5_wk': (gbm, rank['correction'][:5]), 'p_gbm_dir_top10_wk': (gbm, rank['direct'][:10])}
     for n in CAND: D[n] = np.nan
     for m in pd.date_range('2026-03-01', '2026-08-01', freq='MS', tz='UTC'):   # "frozen" lasso = monthly refit
         a, b = m.timestamp(), (m + pd.offsets.MonthBegin(1)).timestamp(); te = D[(D.snap_ts >= a) & (D.snap_ts < b)]; trm = D[D.close_ts <= a]
-        D.loc[te.index, 'p_lasso_corr'] = lasso().fit(trm[ALL], trm.res).predict_proba(te[ALL])[:, 1]; log('lasso month', m.date())
+        ck = f'work/bf_auto_ck/m{int(a)}.npy'
+        if not os.path.exists(ck): np.save(ck, lasso().fit(trm[ALL], trm.res).predict_proba(te[ALL])[:, 1])
+        D.loc[te.index, 'p_lasso_corr'] = np.load(ck); log('lasso month', m.date())
     for a, b in weeks():
         te = D[(D.snap_ts >= a) & (D.snap_ts < b)]; trw = D[D.close_ts <= a]
         for n in ['p_lasso_corr_wk', 'p_gbm_corr_top5_wk', 'p_gbm_dir_top10_wk']:
-            f, cols = CAND[n]; D.loc[te.index, n] = f().fit(trw[cols], trw.res).predict_proba(te[cols])[:, 1]
+            f, cols = CAND[n]; ck = f'work/bf_auto_ck/{n}_{int(a)}.npy'
+            if not os.path.exists(ck): np.save(ck, f().fit(trw[cols], trw.res).predict_proba(te[cols])[:, 1])
+            D.loc[te.index, n] = np.load(ck)
         log('auto wk', pd.Timestamp(a, unit='s').date())
     D[(D.snap_ts >= MAR) & (D.snap_ts < SEP)][['ticker', 'k'] + list(CAND)].to_parquet('work/bf_auto.parquet')
 log('done', part)
