@@ -1,13 +1,1 @@
-[
- {
-  "time_utc": "2026-11-10 10:57:00",
-  "ticker": "KXBTC-26NOV1006-B74150",
-  "side": "YES",
-  "mins_left": 3,
-  "contracts": 20,
-  "avg_price": 0.81,
-  "fee": 0.22,
-  "cost": 16.42,
-  "close_ts": 1794308400
- }
-]
+[]
