@@ -529,3 +529,5 @@ time_utc,ticker,min_left,secs_left,brti,strike,distance_usd,one_sd_usd,sig15,yes
 2026-11-10 23:18:00,KXBTC15M-26NOV101830-30,12,720,73610.25,73575.38,34.87,96.16,5.01e-05,0.65,0.36,64.16,35.84,-2.43,-1.77,,,no look (no side at 15c or less with a 8-point edge),,
 2026-11-10 23:19:00,KXBTC15M-26NOV101830-30,11,660,73617.93,73575.38,42.55,90.63,4.944e-05,0.74,0.27,68.07,31.93,-7.28,3.55,,,no look (no side at 15c or less with a 8-point edge),,
 2026-11-10 23:20:00,KXBTC15M-26NOV101830-30,10,600,73645.07,73575.38,69.69,85.54,4.908e-05,0.81,0.2,79.25,20.75,-2.83,-0.37,,,no look (no side at 15c or less with a 8-point edge),,
+2026-11-10 23:21:00,KXBTC15M-26NOV101830-30,9,540,73640.97,73575.38,65.59,81.14,4.927e-05,0.84,0.17,79.07,20.93,-5.87,2.95,,,no look (no side at 15c or less with a 8-point edge),,
+2026-11-10 23:22:00,KXBTC15M-26NOV101830-30,8,480,73655.57,73575.38,80.19,74.1,4.796e-05,0.88,0.13,86.05,13.95,-2.69,0.15,,,no look (no side at 15c or less with a 8-point edge),,
