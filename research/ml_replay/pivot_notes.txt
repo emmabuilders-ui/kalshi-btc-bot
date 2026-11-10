@@ -1,0 +1,10 @@
+Kalshi 15-min BTC (KXBTC15M): Kalshi price vs every model, Mar-Oct 2026, by month, minutes left and 10c Kalshi price band.
+One Data row = one month x minutes left x Kalshi price band x model. Snapshots = leak-free minute snapshots with fresh quotes.
+Kalshi price = bid/ask mid at the snapshot. Actual win % = share that settled YES.
+% wrong = actual win % minus the model's average probability (pts). Positive = YES was underpriced, negative = NO underpriced. Measured at mid, before fees (~0.9c at 85c) and half the spread.
+Brier vs Kalshi x1000: negative = model more accurate than Kalshi on the same snapshots.
+Sample: Sep-Oct = holdout (models fit on Dec-Aug). Mar-Aug = out-of-fold (monthly walk-forward). in-sample = Static calibration and Simple volatility model before Sep; filter them out for a fair comparison.
+Pivot averages are simple averages of Data rows, not weighted by snapshots. Thin rows swing them; check the Snapshots column.
+Weekly-refit, 15-min recal, order-flow weekly and auto-feature models exist only Sep-Oct. Correction ML + order flow lacks May-Jul (no taker side in those trade files).
+Scripts: research/ml_replay/pivot_data.py and pivot_build.py.
+Abs % wrong averaged over many thin rows includes noise; judge consistency by the signed % wrong and by whether it holds month to month. z-scores per spot are in kalshi_weakest_cells.xlsx.
