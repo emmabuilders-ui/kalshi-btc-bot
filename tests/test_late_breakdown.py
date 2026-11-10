@@ -137,3 +137,32 @@ def test_open_trade_survives_restart(tmp_path):
     again.settle(1000)
     assert again.unsettled == [] and ",no,1," in (tmp_path / "trades.csv").read_text()
     assert LateBreakdownPaper(tmp_path).unsettled == []
+
+
+def test_settlement_gate_skips_break_the_average_cannot_confirm(tmp_path):
+    """A $5 break with 2 minutes left in a jumpy market: the 60-s settlement average is far from certain,
+    so a NO ask of 90c is not worth it and the bot logs the settlement chance instead of buying."""
+    from kalshi_btc_bot.late_breakdown import LateBreakdownPaper, Session
+
+    class FakeKalshi:
+        key = None
+        def orderbook(self, ticker):
+            return {"yes_bids": [[0.10, 500.0], [0.09, 500.0]]}
+        def result(self, ticker):
+            return "no"
+
+    bot = LateBreakdownPaper(tmp_path)
+    bot.k = FakeKalshi()
+    o = 1_000_000
+    rng = np.random.default_rng(5)
+    for t in range(o - 90000, o):
+        bot.series.brti[t] = 900.0 + 100.0 * (t - o + 90000) / 90000
+    bot.session = Session("T1", strike=1000.0, open_ts=o, close_ts=o + 900, s0=1000.0, levels={"hard": 990.0})
+    for sec in range(0, 790):
+        price = (1000.0 if sec < 778 else 984.0) + rng.normal(0, 1.5)   # $1.5 a second of noise: one sd of the
+        # 60-s average with 120 s left is about $19, so a $16 break is only an 80% NO, under the 90c ask
+        bot.series.brti[o + sec] = price
+        bot.step(o + sec, price)
+    assert not bot.unsettled
+    sig = (tmp_path / "signals.csv").read_text()
+    assert "settlement chance" in sig and ",model," in sig.splitlines()[0]

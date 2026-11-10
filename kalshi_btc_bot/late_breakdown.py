@@ -46,6 +46,7 @@ import numpy as np
 import requests
 
 from .logpush import git_push_logs
+from .settlement import settle_prob, side_prob, sigma_1s, worth_it
 
 log = logging.getLogger("kalshi_btc_bot")
 
@@ -529,9 +530,12 @@ class LateBreakdownPaper:
         S = float(b[-1])
         stack = ma_stack(b, len(b) - 1)
         lo, hi = (0.0, self.max_price) if side == "no" else self.yes_range
+        # settlement-aware chance of this side: Kalshi settles on the 60-s BRTI average, so a $5 break with
+        # 1-3 minutes left says much less than the spot price suggests (added 2026-11-10)
+        p_side = side_prob(settle_prob(S, s.strike, left, sigma_1s(b[-901:])), side)
         row = {"time_utc": _iso(now), "ticker": s.ticker, "side": side.upper(), "level": name,
                "level_price": round(s.levels[name], 2), "secs_left": left, "price": round(S, 2),
-               "strike": s.strike, "stack": stack, "proxy_bias": round(self.series.bias, 2)}
+               "strike": s.strike, "stack": stack, "model": round(p_side, 4), "proxy_bias": round(self.series.bias, 2)}
         reason = ""
         if te > 840 or not 60 <= left < 180:
             reason = "outside 1-2 min window"
@@ -552,6 +556,8 @@ class LateBreakdownPaper:
                 reason = "empty book"
             elif not lo <= ask <= hi:
                 reason = f"{side.upper()} ask {ask:.2f} outside {lo:.2f}-{hi:.2f}"
+            elif not worth_it(p_side, ask):
+                reason = f"settlement chance {p_side:.2f} under ask {ask:.2f} + fee"
         row["decision"] = f"BUY {side.upper()}" if not reason else "skip: " + reason
         self._append("signals.csv", row)
         log.info("%s %s", s.ticker, row["decision"])
@@ -564,7 +570,8 @@ class LateBreakdownPaper:
         fee = kalshi_fee(n, avg)
         trade = {"time_utc": _iso(now), "ticker": s.ticker, "side": side.upper(), "level": name,
                  "secs_left": left, "contracts": n, "avg_price": round(avg, 4), "fee": fee,
-                 "cost": round(n * avg + fee, 2), "close_ts": s.close_ts, "result": "", "won": "", "pnl": ""}
+                 "cost": round(n * avg + fee, 2), "model": round(p_side, 4), "close_ts": s.close_ts,
+                 "result": "", "won": "", "pnl": ""}
         self.unsettled.append(trade)
         self._save_open()
         log.info("PAPER BUY %d %s %s @ %.2f (fee %.2f)", n, side.upper(), s.ticker, avg, fee)

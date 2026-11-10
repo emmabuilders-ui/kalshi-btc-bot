@@ -34,11 +34,35 @@ HOLD = 3 * 3600      # seconds kept in memory (the range model needs 100 one-min
 
 
 def _rows(path: Path) -> list[dict]:
+    """Rows of a bot's CSV plus any older copies the bot set aside when its columns changed
+    (name.<epoch>.csv, oldest first), so adding a column never hides earlier trades."""
+    out: list[dict] = []
     try:
-        with path.open() as f:
-            return list(csv.DictReader(f))
-    except (OSError, csv.Error):
-        return []
+        older = sorted(path.parent.glob(f"{path.stem}.*{path.suffix}"), key=lambda q: q.name)
+    except OSError:
+        older = []
+    for p in older + [path]:
+        try:
+            with p.open() as f:
+                out.extend(csv.DictReader(f))
+        except (OSError, csv.Error):
+            pass
+    return out
+
+
+def _buy_model(sig: dict, tr: dict | None) -> float | None:
+    """The bot's settlement-aware chance for the side it bought, from the trade row or the signal row."""
+    for src in (tr or {}, sig):
+        for k in ("model", "model_prob"):
+            v = _num(src.get(k))
+            if v is not None:
+                return v
+    side = str(sig.get("side") or "").lower()
+    p = _num(sig.get("model_p_yes"))
+    if p is not None:
+        return p if side == "yes" else 1 - p
+    f = _num(sig.get("yes_fair_pct" if side == "yes" else "no_fair_pct"))
+    return None if f is None else f / 100
 
 
 def _json(path: Path, default):
@@ -233,7 +257,7 @@ def history_events(L: dict[str, Path]) -> dict:
     levels = [[t, lv[t]] for t in sorted(lv)]
     buys = []
     for bot, key in (("Breakdown", "breakdown"), ("Fast push", "fastpush"), ("Squeeze", "squeeze"),
-                     ("Squeeze maker", "squeeze_maker"), ("Model gap", "model_gap"),
+                     ("Squeeze maker", "squeeze_maker"), ("Model gap", "model_gap"), ("Correction ML", "corr_gap"),
                      ("Longshot", "longshot")):
         if key not in L:
             continue
@@ -245,6 +269,7 @@ def history_events(L: dict[str, Path]) -> dict:
             st = "open" if tr is None else ("won" if str(tr.get("won")) == "1" else "lost")
             buys.append({"bot": bot, "t": _ts(r.get("break_utc") or r["time_utc"]), "side": r.get("side"),
                          "level": r.get("level"), "ask": _num(r.get("ask")), "status": st,
+                         "model": _buy_model(r, tr),
                          "n": (tr or {}).get("contracts") or r.get("contracts"),
                          "price": _num(tr.get("avg_price")) if tr else None,
                          "cost": _num(tr.get("cost")) if tr else None,
@@ -260,14 +285,15 @@ def favorite_events(d: Path | None, bot: str = "Favorite") -> list:
     for r in _rows(d / "trades.csv"):
         t = _ts(r["time_utc"])
         out.append({"t": t, "close": (t // 3600 + 1) * 3600, "side": r["side"], "bot": bot,
-                    "lo": None, "hi": None, "n": r.get("contracts"), "price": _num(r.get("avg_price")), "model": None,
+                    "lo": None, "hi": None, "n": r.get("contracts"), "price": _num(r.get("avg_price")),
+                    "model": _num(r.get("model")),
                     "status": "won" if str(r.get("won")) == "1" else "lost", "pnl": _num(r.get("pnl")),
                     "cost": _num(r.get("cost")), "ticker": r.get("ticker")})
     for p in range_positions(d):
         t = _ts(p["time_utc"])
         out.append({"t": t, "close": p["close_ts"], "side": p["side"], "bot": bot, "lo": p["lo"], "hi": p["hi"],
-                    "n": p["contracts"], "price": p["avg_price"], "model": None, "status": "open", "pnl": None,
-                    "cost": p.get("cost"), "ticker": p.get("ticker")})
+                    "n": p["contracts"], "price": p["avg_price"], "model": _num(p.get("model")), "status": "open",
+                    "pnl": None, "cost": p.get("cost"), "ticker": p.get("ticker")})
     edges = {r["ticker"]: (_num(r.get("floor")), _num(r.get("cap"))) for r in _rows(d / "signals.csv")}
     for e in out:
         if e["lo"] is None and e["hi"] is None:
@@ -288,7 +314,7 @@ def fastpush_range_events(d: Path | None) -> list:
         done.add((r.get("ticker"), r.get("side")))
         out.append({"t": t, "close": (t // 3600 + 1) * 3600, "side": r["side"], "bot": "FP range",
                     "lo": _num(r.get("floor")), "hi": _num(r.get("cap")), "level": r.get("level"),
-                    "n": r.get("contracts"), "price": _num(r.get("avg_price")), "model": None,
+                    "n": r.get("contracts"), "price": _num(r.get("avg_price")), "model": _num(r.get("model")),
                     "status": "won" if str(r.get("won")) == "1" else "lost", "pnl": _num(r.get("pnl")),
                     "cost": _num(r.get("cost"))})
     for r in _rows(d / "signals.csv"):  # a BUY with no settled trade yet is an open position
@@ -298,7 +324,8 @@ def fastpush_range_events(d: Path | None) -> list:
         n = r.get("contracts") or 20
         out.append({"t": t, "close": (t // 3600 + 1) * 3600, "side": r["side"], "bot": "FP range",
                     "lo": _num(r.get("floor")), "hi": _num(r.get("cap")), "level": r.get("level"),
-                    "n": n, "price": _num(r.get("ask")), "model": None, "status": "open", "pnl": None, "cost": None})
+                    "n": n, "price": _num(r.get("ask")), "model": _num(r.get("model")), "status": "open", "pnl": None,
+                    "cost": None})
     return out
 
 
@@ -727,6 +754,7 @@ class Dashboard:
         sq = L.get("squeeze") or Path("/nonexistent")
         sqm = L.get("squeeze_maker") or Path("/nonexistent")
         mg = L.get("model_gap") or Path("/nonexistent")
+        cg = L.get("corr_gap") or Path("/nonexistent")
         lsh = L.get("longshot") or Path("/nonexistent")
         hour_close = (int(time.time()) // 3600 + 1) * 3600
         return {
@@ -738,6 +766,7 @@ class Dashboard:
                     + session_buys(_rows(sq / "signals.csv"), s.get("ticker"), "Squeeze")
                     + session_buys(_rows(sqm / "signals.csv"), s.get("ticker"), "Squeeze maker")
                     + session_buys(_rows(mg / "signals.csv"), s.get("ticker"), "Model gap")
+                    + session_buys(_rows(cg / "signals.csv"), s.get("ticker"), "Correction ML")
                     + session_buys(_rows(lsh / "signals.csv"), s.get("ticker"), "Longshot"),
             "pnl": sorted(pnl_points(_rows(L["range"] / "trades.csv"), "Range")
                           + pnl_points(_rows(L["breakdown"] / "trades.csv"), "Breakdown")
@@ -751,6 +780,7 @@ class Dashboard:
                           + pnl_points(_rows(sq / "trades.csv"), "Squeeze")
                           + pnl_points(_rows(sqm / "trades.csv"), "Squeeze maker")
                           + pnl_points(_rows(mg / "trades.csv"), "Model gap")
+                          + pnl_points(_rows(cg / "trades.csv"), "Correction ML")
                           + pnl_points(_rows(lsh / "trades.csv"), "Longshot"),
                           key=lambda r: r["time_utc"]),
             "breakdown": settled_summary(_rows(L["breakdown"] / "trades.csv")),
@@ -764,6 +794,7 @@ class Dashboard:
             "squeeze": settled_summary(_rows(sq / "trades.csv")),
             "squeeze_maker": settled_summary(_rows(sqm / "trades.csv")),
             "model_gap": settled_summary(_rows(mg / "trades.csv")),
+            "corr_gap": settled_summary(_rows(cg / "trades.csv")),
             "longshot": settled_summary(_rows(lsh / "trades.csv")),
             "perf": self.perf(),
         }
@@ -775,7 +806,7 @@ class Dashboard:
             ("Fast-push range", "fastpush_range"), ("Favorite", "favorite"), ("Trend broad", "trend_broad"),
             ("Trend tight", "trend_tight"), ("Maker (limit order)", "maker"), ("Quiet favorite", "quiet"),
             ("Squeeze", "squeeze"), ("Squeeze maker", "squeeze_maker"), ("Model gap (Direct ML, NO)", "model_gap"),
-            ("Longshot (15c or less)", "longshot"))]
+            ("Correction ML (NO)", "corr_gap"), ("Longshot (15c or less)", "longshot"))]
         if L.get("range5"):
             r5 = _rows(L["range5"] / "trades.csv")
             for a in range(1, 6):
@@ -849,6 +880,8 @@ def make_handler(dash: Dashboard, token: str):
             r5 = self.path.endswith("?v=range5") and "range5" in dash.logs
             if r5:
                 self.path = self.path[: -len("?v=range5")]
+            if self.path.endswith("?v=models"):   # chart-only view embedded at the top of /models/
+                self.path = self.path[: -len("?v=models")]
             if self.path == root:
                 self._send(200, page, "text/html; charset=utf-8")
             elif self.path == root + "history.json":
@@ -960,9 +993,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--raw:#b9bec5;--buyzone:#14632f;--fp:#8e44ad;--fpr:#d35400;--fav:#0e8a9e;--tb:#b5179e;--tt:#2b4bd1;--mkr:#7a5c00;--qt:#5b6b00;--sq:#a0522d;--sqm:#006d77;--mg:#9c2f6e;--ls:#1d7874;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--raw:#b9bec5;--buyzone:#14632f;--fp:#8e44ad;--fpr:#d35400;--fav:#0e8a9e;--tb:#b5179e;--tt:#2b4bd1;--mkr:#7a5c00;--qt:#5b6b00;--sq:#a0522d;--sqm:#006d77;--mg:#9c2f6e;--cg:#b8600f;--ls:#1d7874;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--raw:#555c65;--buyzone:#3fbf6a;--fp:#c08be0;--fpr:#f39c5a;--fav:#4fc3d6;--tb:#e07ad0;--tt:#7f95ff;--mkr:#d9b44a;--qt:#b5c94a;--sq:#e0916a;--sqm:#4fd1c5;--mg:#e88ac0;--ls:#58c4bf;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--raw:#555c65;--buyzone:#3fbf6a;--fp:#c08be0;--fpr:#f39c5a;--fav:#4fc3d6;--tb:#e07ad0;--tt:#7f95ff;--mkr:#d9b44a;--qt:#b5c94a;--sq:#e0916a;--sqm:#4fd1c5;--mg:#e88ac0;--cg:#f0a35c;--ls:#58c4bf;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
@@ -994,6 +1027,8 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 .big{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--mut)}
 .key i{display:inline-block;width:12px;height:10px;margin-right:4px;vertical-align:middle;border-radius:2px}
+.arrow{padding:0 10px;height:26px;line-height:26px;font-size:13px}
+#c,#pl{cursor:grab;touch-action:pan-y}#c.drag,#pl.drag{cursor:grabbing}
 .navbtn{padding:5px 12px;border:1px solid var(--grid2);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-weight:600;font-size:13px}.navbtn:hover{border-color:var(--ladder-t)}
 body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:var(--card)}
 /*FILTER_CSS*/</style></head><body><div class="wrap">
@@ -1005,15 +1040,16 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <div class="card">
 <div class="key r5only" style="display:none"><span>trade bands: light shade = <b>won</b>, dark shade = <b>lost</b>, dashed outline = open; color = account (1 blue · 2 orange · 3 green · 4 gold · 5 purple)</span></div>
 <div class="key"><span class="nor5"><i style="background:var(--no);opacity:.35"></i>range NO band</span><span class="nor5"><i style="background:var(--yes);opacity:.35"></i>range YES band</span>
-<span class="nor5">band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span class="nor5">markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot · ◆ Fast-push range bot · ▼ Favorite bot · ★ Trend broad bot · ✦ Trend tight bot · ⬢ Maker (limit-order) bot · ✚ Quiet favorite bot · ⬟ Squeeze bot · ⬡ Squeeze maker bot · ◈ Model gap bot · ✖ Longshot bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
+<span class="nor5">band outline: <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span><span class="nor5">markers: ● Range bot · ▲ Breakdown bot · ■ Fast-push bot · ◆ Fast-push range bot · ▼ Favorite bot · ★ Trend broad bot · ✦ Trend tight bot · ⬢ Maker (limit-order) bot · ✚ Quiet favorite bot · ⬟ Squeeze bot · ⬡ Squeeze maker bot · ◈ Model gap bot · ◇ Correction ML bot · ✖ Longshot bot, colored <b style="color:var(--win)">won</b> / <b style="color:var(--lose)">lost</b> / <b style="color:var(--open)">open</b></span>
 <span><i style="background:var(--ladder)"></i>Kalshi hourly range bands (every other band shaded)</span><span><i style="background:var(--sup)"></i>hard support</span><span><i style="background:var(--res)"></i>hard resistance (nearest hard level below and above BTC, recalculated every minute)</span><span><b style="color:var(--sup)">╌</b> rising support / <b style="color:var(--res)">╌</b> falling resistance trend lines (5-min swings), × = break</span><span><i style="background:var(--target)"></i>15-min target (strike) for each contract: above at the close = YES wins</span><span>thin vertical lines = 15-min contract closes</span></div>
 <div id="sc"><div id="inner"><div id="stick">
 <div class="lbl">Bitcoin: 60-second BRTI average (black, what Kalshi settles on), BRTI each second (light gray), and every trade</div><canvas id="c"></canvas>
-<div class="nor5"><div class="lbl" style="margin-top:6px">Kalshi YES ask (green, up) and NO ask (red, down) in cents, centered on 0: the 15-minute contract and the hourly band BTC is inside, overlaid, a line every 10¢ <span class="mut" style="font-weight:400">· recorded from when this was first deployed</span></div><canvas id="qp"></canvas></div>
-<div style="display:flex;align-items:center;gap:10px;margin-top:6px"><span class="mut" id="slL" style="font-size:12px;white-space:nowrap"></span>
+<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span class="mut" id="slL" style="font-size:12px;white-space:nowrap"></span>
+<button id="sl-l" class="arrow" title="Back half a screen" aria-label="Back half a screen">◀</button>
 <input type="range" id="slider" min="0" max="1000" value="1000" style="flex:1;accent-color:var(--ladder-t);height:22px" aria-label="Move through the history">
+<button id="sl-r" class="arrow" title="Forward half a screen" aria-label="Forward half a screen">▶</button>
 <span class="mut" id="slR" style="font-size:12px;white-space:nowrap">now</span></div>
-<div class="mut" style="font-size:12px;margin:2px 0 6px">Drag the slider (or scroll sideways) to move through the full history. Both graphs move together.</div>
+<div class="mut" style="font-size:12px;margin:2px 0 6px">Drag the graph itself, the slider, or use the arrows to move through the full history. Both graphs move together.</div>
 <div class="nor5"><div class="lbl">Profit and loss, after fees <span class="mut" id="pl-legend" style="font-weight:400"></span></div><canvas id="pl"></canvas></div>
 </div></div></div>
 </div>
@@ -1049,7 +1085,9 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 /*FILTER_JS*/
 let D=null,H=null,P=[];          // live data, history, merged prices [[t,p]]
 const R5=location.search.includes('v=range5'),QS=R5?'?v=range5':'';   // chart-only view for the 5-account bot page
+const MV=location.search.includes('v=models');   // chart-only view for the ML bots page: only their trades shown
 if(R5){document.body.classList.add('r5');document.querySelector('.r5only').style.display=''}
+if(MV)document.body.classList.add('r5');
 // 5-account view: each account has its own color; a winning trade is a light shade of it, a losing trade a dark shade
 const ACOL={1:[42,120,214],2:[235,104,52],3:[27,175,122],4:[201,133,0],5:[98,80,214]};
 function acol(r,kind){const c=ACOL[r.acct]||[120,120,120],m=kind==='light'?c.map(v=>Math.round(v+(255-v)*.55)):kind==='dark'?c.map(v=>Math.round(v*.55)):c;return `rgb(${m.join(',')})`}
@@ -1115,10 +1153,20 @@ function zoom(d){if(!D)return;const [T0,T1]=range();
 $('zin').onclick=()=>zoom(1);$('zout').onclick=()=>zoom(-1);
 $('back').onclick=()=>{follow=false;sc.scrollLeft-=3600*pps()};
 $('live').onclick=()=>{follow=true;layout()};
+// arrows beside the slider: half a screen back or forward (the scroll handler keeps the slider and "follow" in step)
+$('sl-l').onclick=()=>{follow=false;sc.scrollLeft-=sc.clientWidth/2};
+$('sl-r').onclick=()=>{sc.scrollLeft+=sc.clientWidth/2};
+// drag the graph itself to move through time (mouse, pen or touch)
+for(const cv of [$('c'),$('pl')]){let drag=null;
+ cv.addEventListener('pointerdown',e=>{if(e.button!==0&&e.pointerType==='mouse')return;drag={x:e.clientX,left:sc.scrollLeft,id:e.pointerId};cv.classList.add('drag');try{cv.setPointerCapture(e.pointerId)}catch(err){}e.preventDefault()});
+ cv.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;follow=false;sc.scrollLeft=drag.left-(e.clientX-drag.x)});
+ const end=e=>{if(!drag||e.pointerId!==drag.id)return;drag=null;cv.classList.remove('drag');try{cv.releasePointerCapture(e.pointerId)}catch(err){}};
+ cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);cv.addEventListener('lostpointercapture',()=>{drag=null;cv.classList.remove('drag')})}
 // Trade filter: one button per bot (per account on the 5-account page) to show or hide its bands, markers and labels
-const FBOTS=[['Range','●','--yes'],['Breakdown','▲','--no'],['Fast push','■','--fp'],['FP range','◆','--fpr'],['Favorite','▼','--fav'],['Trend broad','★','--tb'],['Trend tight','✦','--tt'],['Maker','⬢','--mkr'],['Quiet','✚','--qt'],['Squeeze','⬟','--sq'],['Squeeze maker','⬡','--sqm'],['Model gap','◈','--mg'],['Longshot','✖','--ls']];
-const HKEY=R5?'hiddenAccounts':'hiddenBots';let HID=new Set();
-try{HID=new Set(JSON.parse(localStorage.getItem(HKEY)||'[]').map(String))}catch(e){}
+const FBOTS=[['Range','●','--yes'],['Breakdown','▲','--no'],['Fast push','■','--fp'],['FP range','◆','--fpr'],['Favorite','▼','--fav'],['Trend broad','★','--tb'],['Trend tight','✦','--tt'],['Maker','⬢','--mkr'],['Quiet','✚','--qt'],['Squeeze','⬟','--sq'],['Squeeze maker','⬡','--sqm'],['Model gap','◈','--mg'],['Correction ML','◇','--cg'],['Longshot','✖','--ls']];
+const MLBOTS=['Model gap','Correction ML'];
+const HKEY=R5?'hiddenAccounts':MV?'hiddenBotsModels':'hiddenBots';let HID=new Set();
+try{const sv=localStorage.getItem(HKEY);HID=new Set(sv?JSON.parse(sv).map(String):MV?FBOTS.map(f=>f[0]).filter(k=>!MLBOTS.includes(k)):[])}catch(e){HID=new Set(MV?FBOTS.map(f=>f[0]).filter(k=>!MLBOTS.includes(k)):[])}
 const isHid=k=>HID.has(String(k)),fkey=r=>R5?r.acct:(r.bot||'Range');
 function buildFilters(){
  const items=R5?[1,2,3,4,5].map(a=>[String(a),'Acct '+a,acol({acct:a})]):FBOTS.map(([k,m,c])=>[k,m+' '+k,css(c)]),bar=$('filters');
@@ -1292,7 +1340,7 @@ function draw(){
  for(const b of (H?H.buys:[]).filter(b=>b.t>=tL&&b.t<=tR&&!isHid(b.bot))){const y=at(b.t);if(y==null)continue;const x=X(b.t),yy=Y(y),up=b.side==='YES',short=short0&&x>=L&&x<=w-R;
   marker(g,b.bot,x,yy,css(st[b.status]));
   if(short){const col=css(st[b.status]),ty=yy+(up?-28:28);
-   const [lx,ly,tw]=label(x+12,ty,`${hm(b.t)} ${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''} ${b.level||''} → ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,col);g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yy);g.lineTo(lx>x?lx:lx+tw,ly);g.stroke();g.setLineDash([])}}
+   const [lx,ly,tw]=label(x+12,ty,`${hm(b.t)} ${b.bot} ${b.side} @${b.ask?Math.round(b.ask*100)+'¢':''}${b.model!=null?' model '+(b.model*100).toFixed(1)+'¢':''} ${b.level||''} → ${b.status==='open'?'OPEN':b.status.toUpperCase()+(b.pnl!=null?' '+money(b.pnl):'')}`,col);g.strokeStyle=col;g.setLineDash([3,3]);g.beginPath();g.moveTo(x,yy);g.lineTo(lx>x?lx:lx+tw,ly);g.stroke();g.setLineDash([])}}
  if(HL&&HL.until>Date.now()&&HL.t>=tL&&HL.t<=tR){const y=at(HL.t);if(y!=null){const x=X(HL.t),yy=Y(y);g.strokeStyle=css('--fg');g.lineWidth=2.5;g.beginPath();g.arc(x,yy,13,0,6.283);g.stroke();g.strokeStyle='#ffd400';g.lineWidth=1.5;g.beginPath();g.arc(x,yy,16,0,6.283);g.stroke()}}
  // live 15-min contract: Kalshi YES price, model and difference, in a small tag just right of the live price, by its target line
  const S=D.session,Q=(D.q15||[]).at(-1);
@@ -1317,7 +1365,7 @@ function draw(){
  for(const [t1,t2,yt,yb,sh] of gut){if(sh){g.fillStyle=css('--ladder');g.globalAlpha=.13;g.fillRect(w-R,yt,R,yb-yt);g.globalAlpha=1}
   const ym=(yt+yb)/2,two=t2&&yb-yt>=24;if(ym-12<T||ym+13>h-B)continue;g.fillStyle=css('--ladder-t');g.fillText(t1,w-R+5,two?ym-1.5:ym+3.5);if(two)g.fillText(t2,w-R+5,ym+10.5)}
  g.restore();
- qpanel(tL,tR);plchart(tL,tR);
+ plchart(tL,tR);
 }
 // one shape per bot: Range circle, Breakdown triangle, Fast push square, Fast push on range bands diamond
 function marker(g,bot,x,y,col){g.fillStyle=col;g.strokeStyle=css('--card');g.lineWidth=1.5;g.beginPath();
@@ -1331,10 +1379,11 @@ function marker(g,bot,x,y,col){g.fillStyle=col;g.strokeStyle=css('--card');g.lin
  else if(bot==='Squeeze'){for(let i=0;i<5;i++){const a=-Math.PI/2+i*2*Math.PI/5;i?g.lineTo(x+7*Math.cos(a),y+7*Math.sin(a)):g.moveTo(x+7*Math.cos(a),y+7*Math.sin(a))}g.closePath()}
  else if(bot==='Squeeze maker'){for(let i=0;i<6;i++){const a=Math.PI/6+i*Math.PI/3;i?g.lineTo(x+7.5*Math.cos(a),y+7.5*Math.sin(a)):g.moveTo(x+7.5*Math.cos(a),y+7.5*Math.sin(a))}g.closePath();g.moveTo(x+3.2,y);g.arc(x,y,3.2,0,7,true)}
  else if(bot==='Model gap'){g.moveTo(x,y-7.5);g.lineTo(x+7.5,y);g.lineTo(x,y+7.5);g.lineTo(x-7.5,y);g.closePath();g.moveTo(x+3,y);g.arc(x,y,3,0,7,true)}
+ else if(bot==='Correction ML'){g.moveTo(x,y-7.5);g.lineTo(x+7.5,y);g.lineTo(x,y+7.5);g.lineTo(x-7.5,y);g.closePath();g.moveTo(x,y-3.5);g.lineTo(x+3.5,y);g.lineTo(x,y+3.5);g.lineTo(x-3.5,y);g.closePath()}
  else if(bot==='Longshot'){g.moveTo(x-5.5,y-5.5);g.lineTo(x+5.5,y+5.5);g.moveTo(x+5.5,y-5.5);g.lineTo(x-5.5,y+5.5)}
  else if(bot==='Maker'){for(let i=0;i<6;i++){const a=i*Math.PI/3;i?g.lineTo(x+6.5*Math.cos(a),y+6.5*Math.sin(a)):g.moveTo(x+6.5*Math.cos(a),y+6.5*Math.sin(a))}g.closePath()}
  else g.arc(x,y,5,0,7);g.fill();g.stroke()}
-const BOTS=[['Total','--line'],['Range','--yes'],['Breakdown','--no'],['Fast push','--fp'],['FP range','--fpr'],['Favorite','--fav'],['Trend broad','--tb'],['Trend tight','--tt'],['Maker','--mkr'],['Quiet','--qt'],['Squeeze','--sq'],['Squeeze maker','--sqm'],['Model gap','--mg'],['Longshot','--ls']];
+const BOTS=[['Total','--line'],['Range','--yes'],['Breakdown','--no'],['Fast push','--fp'],['FP range','--fpr'],['Favorite','--fav'],['Trend broad','--tb'],['Trend tight','--tt'],['Maker','--mkr'],['Quiet','--qt'],['Squeeze','--sq'],['Squeeze maker','--sqm'],['Model gap','--mg'],['Correction ML','--cg'],['Longshot','--ls']];
 function plchart(tL,tR){
  const [g,w]=setup($('pl'),240),h=240,L=66,R=GUT,T=8,B=22;
  const X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
@@ -1424,35 +1473,6 @@ $('bbbtn').onclick=()=>{BBON=!BBON;bandSave();syncBandBtns();draw()};
 $('kcbtn').onclick=()=>{KCON=!KCON;bandSave();syncBandBtns();draw()};
 $('bandk').onchange=e=>{BANDK=+e.target.value;bandSave();draw()};
 syncBandBtns();
-// YES/NO asks recorded by the server (quotes.json): [t, 15-min YES bid, ask, hourly YES bid, ask]
-let QT=[];
-async function loadQuotes(){try{const since=QT.length?QT[QT.length-1][0]:0;const add=await get('quotes.json?since='+since,15000);
- if(add.length){QT=QT.concat(add);draw()}}catch(e){}}
-function qpanel(tL,tR){const cv=$('qp');if(!cv)return;const LH=320,h=LH+22,[g,w]=setup(cv,h),L=66,R=GUT,X=t=>L+(t-tL)/(tR-tL)*(w-L-R),mid=LH/2,sc=(LH/2-8)/100;
- const Yc=c=>mid-c*sc;
- timegrid(g,X,tL,tR,0,22,h,true);
- g.save();g.beginPath();g.rect(L,0,w-L-R,LH);g.clip();
- // a line every 10 cents, stronger at 0 and +-50
- for(let c=-100;c<=100;c+=10){g.strokeStyle=css(c===0?'--fg':'--grid2');g.globalAlpha=c===0?.8:c%50===0?.7:.35;g.lineWidth=1;g.setLineDash(c===0||c%50===0?[]:[2,3]);g.beginPath();g.moveTo(L,Math.round(Yc(c))+.5);g.lineTo(w-R,Math.round(Yc(c))+.5);g.stroke()}
- g.globalAlpha=1;g.setLineDash([]);
- // row: [t, 15-min YES bid, ask, hourly YES bid, ask]. YES ask = r[ci+1], NO ask = 1 - YES bid = 1 - r[ci]. Gaps over 2 min break the line.
- // fills: dark from the 0 line out to the nearer of the two prices, lighter from there out to the farther one
- const gapfill=(sign,col)=>{const pts=QT.filter(r=>r[0]>=tL-120&&r[0]<=tR+120&&r[1]!=null&&r[2]!=null&&r[3]!=null&&r[4]!=null);
-  const seg=[];let cur=[];for(const r of pts){if(cur.length&&r[0]-cur[cur.length-1][0]>120){seg.push(cur);cur=[]}cur.push(r)}if(cur.length)seg.push(cur);
-  const A=r=>sign>0?r[2]:1-r[1],B=r=>sign>0?r[4]:1-r[3],near=r=>Math.min(A(r),B(r)),far=r=>Math.max(A(r),B(r));g.fillStyle=col;
-  const poly=(top,bot,al)=>{g.globalAlpha=al;for(const sg of seg){g.beginPath();sg.forEach((r,i)=>{const x=X(r[0]),y=Yc(sign*top(r)*100);i?g.lineTo(x,y):g.moveTo(x,y)});for(let i=sg.length-1;i>=0;i--)g.lineTo(X(sg[i][0]),Yc(sign*bot(sg[i])*100));g.closePath();g.fill()}};
-  poly(near,()=>0,.26);poly(far,near,.09);g.globalAlpha=1};
- const series=(ci,sign,col,fill,dash,lw)=>{const pts=QT.filter(r=>r[0]>=tL-120&&r[0]<=tR+120&&r[ci]!=null&&r[ci+1]!=null);
-  const seg=[];let cur=[];for(const r of pts){if(cur.length&&r[0]-cur[cur.length-1][0]>120){seg.push(cur);cur=[]}cur.push(r)}if(cur.length)seg.push(cur);
-  const v=r=>sign>0?r[ci+1]:1-r[ci];g.strokeStyle=col;g.fillStyle=col;g.lineWidth=lw;g.setLineDash(dash);
-  for(const sg of seg){if(fill){g.globalAlpha=.07;g.beginPath();g.moveTo(X(sg[0][0]),Yc(0));for(const r of sg)g.lineTo(X(r[0]),Yc(sign*v(r)*100));g.lineTo(X(sg[sg.length-1][0]),Yc(0));g.closePath();g.fill();g.globalAlpha=1}
-   g.beginPath();sg.forEach((r,i)=>{const x=X(r[0]),y=Yc(sign*v(r)*100);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke()}g.setLineDash([])};
- gapfill(1,css('--yes'));gapfill(-1,css('--no'));   // darker shade where the 15-minute and hourly prices differ
- series(1,1,css('--yes'),false,[],1.8);series(1,-1,css('--no'),false,[],1.8);       // 15-minute contract: solid, shaded
- series(3,1,css('--yes'),false,[6,3],1.6);series(3,-1,css('--no'),false,[6,3],1.6);   // hourly band: dashed
- g.restore();
- g.fillStyle=css('--mut');g.font='10px system-ui';g.textAlign='left';
- for(let c=-100;c<=100;c+=10)g.fillText(Math.abs(c)+'¢',w-R+6,Yc(c)+3.5);g.fillText('solid = 15-minute contract · dashed = hourly band BTC is inside · green above 0, red below',L+4,10)}
 let TSIG=-1,TROWS=[],HL=null,hlTimer=0;
 // click a row in the trades table: bring that trade's marker into view on the chart and ring it for a few seconds
 $('trades').addEventListener('click',e=>{const tr=e.target.closest('tr.trrow');if(!tr||!D)return;const r=TROWS[+tr.dataset.i];if(!r)return;
@@ -1465,16 +1485,16 @@ function trades(){if(!H||HV===TSIG)return;TSIG=HV;
  for(const r of H.range||[])R.push({t:r.t,bot:r.bot||'Range',mkt:`${r.lo==null?'':usd(r.lo)}–${r.hi==null?'':usd(r.hi+0.01).slice(1)} · ${hm(r.close)}${r.bot==='FP range'&&r.level?' · '+r.level:''}`,
   side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl,cost:r.cost,acct:r.acct});
  for(const b of H.buys||[])R.push({t:b.t,bot:b.bot,mkt:`15-min ${hm(Math.floor(b.t/900)*900+900)} · ${b.level||''}`,
-  side:b.side,n:b.n,price:b.price!=null?b.price:b.ask,model:null,status:b.status,pnl:b.pnl,cost:b.cost});
+  side:b.side,n:b.n,price:b.price!=null?b.price:b.ask,model:b.model!=null?b.model:null,status:b.status,pnl:b.pnl,cost:b.cost});
  R.sort((a,b)=>a.t-b.t);
- let cum=0,spent=0,nset=0,wins=0,sp=0,sm=0,nm=0;const W={};const z=()=>({w:0,l:0,o:0,p:0,s:0,sp:0,sm:0,nm:0});for(const k of ['Range','Breakdown','Fast push','FP range','Favorite','Trend broad','Trend tight','Maker','Quiet','Squeeze','Squeeze maker','Model gap','Longshot'])W[k]=z();
+ let cum=0,spent=0,nset=0,wins=0,sp=0,sm=0,nm=0;const W={};const z=()=>({w:0,l:0,o:0,p:0,s:0,sp:0,sm:0,nm:0});for(const k of ['Range','Breakdown','Fast push','FP range','Favorite','Trend broad','Trend tight','Maker','Quiet','Squeeze','Squeeze maker','Model gap','Correction ML','Longshot'])W[k]=z();
  for(const r of R){const w=W[r.bot]||(W[r.bot]=z());
   if(r.cost!=null){spent+=r.cost;w.s+=r.cost}r.spent=r.cost!=null?spent:null;
   if(r.status==='open'){w.o++;r.cum=null;continue}nset++;
   r.status==='won'?(w.w++,wins++):w.l++;w.p+=r.pnl||0;cum+=r.pnl||0;r.cum=cum;r.avg=cum/nset;
   if(r.price!=null){sp+=r.price;w.sp+=r.price}if(r.model!=null){sm+=r.model;nm++;w.sm+=r.model;w.nm++}
   r.aprice=sp/nset;r.amodel=nm?sm/nm:null;r.awin=wins/nset}
- const mk=r=>r.bot==='Range'?'●':r.bot==='Breakdown'?'▲':r.bot==='FP range'?'◆':r.bot==='Favorite'?'▼':r.bot==='Trend broad'?'★':r.bot==='Trend tight'?'✦':r.bot==='Maker'?'⬢':r.bot==='Quiet'?'✚':r.bot==='Squeeze'?'⬟':r.bot==='Squeeze maker'?'⬡':r.bot==='Model gap'?'◈':r.bot==='Longshot'?'✖':'■';
+ const mk=r=>r.bot==='Range'?'●':r.bot==='Breakdown'?'▲':r.bot==='FP range'?'◆':r.bot==='Favorite'?'▼':r.bot==='Trend broad'?'★':r.bot==='Trend tight'?'✦':r.bot==='Maker'?'⬢':r.bot==='Quiet'?'✚':r.bot==='Squeeze'?'⬟':r.bot==='Squeeze maker'?'⬡':r.bot==='Model gap'?'◈':r.bot==='Correction ML'?'◇':r.bot==='Longshot'?'✖':'■';
  $('wl').innerHTML=Object.entries(W).map(([k,v])=>{const n=v.w+v.l;
   return `<span><b>${k}</b>: <span style="color:var(--win)">${v.w} won</span> / <span style="color:var(--lose)">${v.l} lost</span>${n?' ('+Math.round(v.w/n*100)+'% win)':''}${v.o?' · '+v.o+' open':''} · ${money(v.p)}${n?' · avg '+money(v.p/n)+'/trade · avg price '+cents(v.sp/n)+(v.nm?' · avg model '+cents(v.sm/v.nm):''):''} · spent $${v.s.toFixed(2)}</span>`}).join('');
  $('tinfo').textContent=`${R.length} trades · total ${money(cum)} settled · avg ${nset?money(cum/nset):'–'} per trade · $${spent.toFixed(2)} spent · newest first`;
@@ -1500,7 +1520,7 @@ function tables(px){q15();trades();
  if(!D.buys.length)rows+=`<tr><td colspan="6" class="mut">No buys this session${s.strike?' (strike '+usd(s.strike)+')':''}. The breakdown and fast-push bots only buy in the last 1–3 minutes; the squeeze bots buy after a Bollinger band break.</td></tr>`;
  $('pos15').innerHTML=rows;
 }
-tick();loadQuotes();setInterval(loadQuotes,10000);setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
+tick();setInterval(loadHistory,60000);loadLevels();setInterval(loadLevels,15000);
 </script></body></html>
 """
 PAGE = PAGE.replace("/*FILTER_CSS*/", FILTER_CSS).replace("/*FILTER_JS*/", FILTER_JS + "\nfor (const id of ['perf','trades','pos','pos15']) ftWatch(id);")

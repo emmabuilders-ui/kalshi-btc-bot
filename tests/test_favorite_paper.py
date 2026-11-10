@@ -88,3 +88,35 @@ def test_dashboard_favorite_events(tmp_path):
     h = history_events({"range": tmp_path / "range", "breakdown": tmp_path / "breakdown",
                         "fastpush": tmp_path / "fastpush", "favorite": d})
     assert [e["bot"] for e in h["range"]] == ["Favorite", "Favorite"]
+
+
+def _bot_moving(tmp_path, markets, books, price=1000.0, noise=0.4):
+    """A favorite bot whose BRTI history moves, so the range model has a volatility reading."""
+    import numpy as np
+    bot = FavoritePaper(tmp_path, None, None)
+    bot.k = FakeKalshi(markets, books)
+    close = 3600 * 1000
+    rng = np.random.default_rng(3)
+    for s in range(close - 2 * 3600, close):
+        bot.brti[s] = price + rng.normal(0, noise)
+    bot.brti[close - 60] = price
+    return bot, close
+
+
+def test_settlement_gate_skips_thin_cushion_and_outside_band(tmp_path):
+    # BRTI 990 sits 10 below the cap of A (many settlement sds away in a calm market) and outside B and C
+    markets = [_mk("A", 975, 999.99, 0.80), _mk("B", 1000, 1024.99, 0.80), _mk("C", 1025, 1049.99, 0.80)]
+    books = {t: {"no_bids": [[0.20, 100.0]]} for t in "ABC"}
+    bot, close = _bot_moving(tmp_path, markets, books, price=990.0)
+    bot.check(close - 60)
+    assert list(bot.held) == ["A"]            # A: BRTI inside with a comfortable cushion
+    tr = bot.held["A"]
+    assert 0 < float(tr["model"]) <= 1
+    skips = (tmp_path / "skips.csv").read_text()
+    assert "B," in skips and "C," in skips and "outside band" in skips
+    # the same band with BRTI $0.10 under its cap: cushion under half a settlement sd, skipped
+    bot2, close2 = _bot_moving(tmp_path / "thin", markets, books, price=999.9)
+    bot2.check(close2 - 60)
+    assert not bot2.held and "cushion" in (tmp_path / "thin" / "skips.csv").read_text()
+    sig = (tmp_path / "signals.csv").read_text().splitlines()
+    assert "model" in sig[0] and "cushion_sd" in sig[0]

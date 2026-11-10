@@ -32,6 +32,7 @@ from .fast_push import (CONTRACTS, MAX_LAG, PUSH_MULT, PUSH_SECS, WINDOW, FastPu
                         minute_vol, price_ok, push_reading)
 from .late_breakdown import _iso, kalshi_fee, log
 from .range_paper import _f, event_ticker, fill
+from .settlement import band_prob, side_prob, sigma_1s, worth_it
 
 
 def band_edges(m: dict) -> tuple[float | None, float | None]:
@@ -117,8 +118,12 @@ class FastPushRangePaper(FastPushPaper):
     def try_band(self, s: FPSession, t: int, name: str, left: int, push, lag, price: float, bside: str, m: dict):
         tk = m["ticker"]
         lo, hi = band_edges(m)
+        # settlement-aware chance that the band wins (60-s BRTI average; added 2026-11-10)
+        p_band = band_prob(price, lo, hi, left, sigma_1s(self.series.array(t - 900, t + 1)))
+        p_side = side_prob(p_band, bside)
         row = {"break_utc": _iso(t), "ticker": tk, "floor": lo, "cap": hi, "side": bside, "level": name,
-               "secs_left": left, "brti": round(price, 2), "push": round(push, 2), "lag_s": round(lag, 1)}
+               "secs_left": left, "brti": round(price, 2), "push": round(push, 2), "lag_s": round(lag, 1),
+               "model": round(p_side, 4)}
         reason = ""
         if self.traded.get(tk) == s.close_ts:
             reason = "band already traded this hour"
@@ -137,6 +142,8 @@ class FastPushRangePaper(FastPushPaper):
                 reason = "empty book"
             elif not ok:
                 reason = f"{bside} ask {ask:.2f} not under 50c or 75-96c"
+            elif not worth_it(p_side, ask):
+                reason = f"settlement chance {p_side:.2f} under ask {ask:.2f} + fee"
         row["decision"] = f"BUY {bside}" if not reason else "skip: " + reason
         self._append("signals.csv", row)
         log.info("%s %s %s push %.2f ask %s -> %s", tk, bside, name, push, ask, row["decision"])
@@ -150,7 +157,7 @@ class FastPushRangePaper(FastPushPaper):
         self.unsettled.append({"time_utc": _iso(t + 1), "ticker": tk, "side": bside, "floor": lo, "cap": hi,
                                "level": name, "secs_left": left, "push": round(push, 2), "lag_s": round(lag, 1),
                                "contracts": n, "avg_price": round(avg, 4), "fee": fee,
-                               "cost": round(n * avg + fee, 2), "close_ts": s.close_ts,
+                               "cost": round(n * avg + fee, 2), "model": round(p_side, 4), "close_ts": s.close_ts,
                                "result": "", "won": "", "pnl": ""})
         log.info("PAPER BUY %d %s %s @ %.2f (fee %.2f)", n, bside, tk, avg, fee)
 

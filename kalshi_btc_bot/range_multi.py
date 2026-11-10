@@ -52,7 +52,8 @@ ACCOUNTS = [
 
 
 def rebuilt_model() -> RangeModel:
-    return RangeModel(str(resources.files("kalshi_btc_bot").joinpath("data/range_cdf_rebuilt.json")))
+    # the rebuilt table was fitted on real 60-s settlements with x = ln(settle/P)/(s100*sqrt(T-0.5)): keep 30 s
+    return RangeModel(str(resources.files("kalshi_btc_bot").joinpath("data/range_cdf_rebuilt.json")), shrink_minutes=0.5)
 
 
 def rule_limit(groups, model_p: float, ask: float | None) -> float | None:

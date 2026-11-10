@@ -40,6 +40,7 @@ import numpy as np
 from .late_breakdown import (BREAK, GAP, SESSION, WARMUP, LateBreakdownPaper, hard_levels,
                              kalshi_fee, _iso)
 from .range_paper import fill
+from .settlement import settle_prob, side_prob, sigma_1s, worth_it
 
 log = logging.getLogger("kalshi_btc_bot")
 
@@ -180,6 +181,9 @@ class FastPushPaper(LateBreakdownPaper):
         row["push"] = round(push, 2) if push is not None else ""
         lag = time.time() - t
         row["lag_s"] = round(lag, 1)
+        # settlement-aware chance of the side (Kalshi settles on the 60-s BRTI average; added 2026-11-10)
+        p_side = side_prob(settle_prob(price, s.strike, left, sigma_1s(self.series.array(t - 900, t + 1))), side)
+        row["model"] = round(p_side, 4)
         if not WINDOW[0] <= left < WINDOW[1]:
             reason = "outside 1-3 min window"
         elif side in s.done:
@@ -210,6 +214,8 @@ class FastPushPaper(LateBreakdownPaper):
                 reason = "empty book"
             elif not ok:
                 reason = f"{side.upper()} ask {ask:.2f} not under 50c or 75-96c"
+            elif not worth_it(p_side, ask):
+                reason = f"settlement chance {p_side:.2f} under ask {ask:.2f} + fee"
         row["decision"] = f"BUY {side.upper()}" if not reason else "skip: " + reason
         self._append("signals.csv", row)
         log.info("%s %s %s push %s ask %s -> %s", s.ticker, side.upper(), name, row["push"], ask, row["decision"])
@@ -222,7 +228,7 @@ class FastPushPaper(LateBreakdownPaper):
         self.unsettled.append({"time_utc": _iso(t + 1), "ticker": s.ticker, "side": side.upper(), "level": name,
                                "secs_left": left, "push": row["push"], "lag_s": row["lag_s"], "contracts": n,
                                "avg_price": round(avg, 4), "fee": fee, "cost": round(n * avg + fee, 2),
-                               "close_ts": s.close_ts, "result": "", "won": "", "pnl": ""})
+                               "model": round(p_side, 4), "close_ts": s.close_ts, "result": "", "won": "", "pnl": ""})
         log.info("PAPER BUY %d %s %s @ %.2f (fee %.2f)", n, side.upper(), s.ticker, avg, fee)
 
 
