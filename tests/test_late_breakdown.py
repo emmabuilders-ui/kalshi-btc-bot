@@ -166,3 +166,32 @@ def test_settlement_gate_skips_break_the_average_cannot_confirm(tmp_path):
     assert not bot.unsettled
     sig = (tmp_path / "signals.csv").read_text()
     assert "settlement chance" in sig and ",model," in sig.splitlines()[0]
+
+
+def test_break_with_151_to_180_s_left_is_outside_the_window(tmp_path):
+    """Since 2026-11-10 the window is 60-150 s: on real $5 breaks the 151-180 s bucket is the one where
+    buying the break side loses, so a break at 735 s (entry 740 s, 160 s left) is logged but not traded."""
+    from kalshi_btc_bot.late_breakdown import WINDOW, LateBreakdownPaper, Session
+
+    assert WINDOW == (60, 151)
+
+    class FakeKalshi:
+        key = None
+        def orderbook(self, ticker):
+            return {"yes_bids": [[0.10, 500.0], [0.09, 500.0]]}
+        def result(self, ticker):
+            return "no"
+
+    bot = LateBreakdownPaper(tmp_path)
+    bot.k = FakeKalshi()
+    o = 1_000_000
+    for t in range(o - 90000, o):
+        bot.series.brti[t] = 900.0 + 100.0 * (t - o + 90000) / 90000
+    bot.session = Session("T1", strike=1000.0, open_ts=o, close_ts=o + 900, s0=1000.0, levels={"hard": 990.0})
+    for sec in range(0, 745):
+        price = 1000.0 if sec < 735 else 984.0   # break at 735 s -> entry at 740 s, 160 s left
+        bot.series.brti[o + sec] = price
+        bot.step(o + sec, price)
+    assert not bot.unsettled
+    sig = (tmp_path / "signals.csv").read_text()
+    assert "outside 60-150 s window" in sig and ",160," in sig

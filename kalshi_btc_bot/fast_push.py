@@ -10,7 +10,7 @@ The rule (Michael, 2026-11-01), tested on Dec 2025 - Oct 2026 with prices rebuil
 * Break: BRTI trades $5 through a level. Only a level's first break counts.
 * Fast push: at the break second, the move over the last 15 s in the break direction is at
   least 2x a normal 15-s move (1-minute volatility of the last 100 minutes x sqrt(1/4)).
-* Window: 60-179 s left. Support break buys NO, resistance break buys YES, the first
+* Window: 60-150 s left (was 60-179 s until 2026-11-10, see late_breakdown.py). Support break buys NO, resistance break buys YES, the first
   qualifying break per side per session, held to settlement.
 * Entry about 1 s after the break (the live BRTI feed is about 1 s behind). The side's ask
   must be under 50c or 75-96c. 20 contracts, walking the book up to the band's limit.
@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .late_breakdown import (BREAK, GAP, SESSION, WARMUP, LateBreakdownPaper, hard_levels,
+from .late_breakdown import (BREAK, GAP, SESSION, WARMUP, WINDOW, LateBreakdownPaper, hard_levels,
                              kalshi_fee, _iso)
 from .range_paper import fill
 from .settlement import settle_prob, side_prob, sigma_1s, worth_it
@@ -45,7 +45,6 @@ from .settlement import settle_prob, side_prob, sigma_1s, worth_it
 log = logging.getLogger("kalshi_btc_bot")
 
 PUSH_SECS, PUSH_MULT = 15, 2.0
-WINDOW = (60, 180)          # seconds left at entry: 60 <= left < 180
 LOW_MAX, HIGH_MIN, HIGH_MAX = 0.4999, 0.75, 0.96
 CONTRACTS = 20
 MAX_LAG = 5                 # skip if the decision comes more than 5 s after the break (wall clock)
@@ -185,7 +184,7 @@ class FastPushPaper(LateBreakdownPaper):
         p_side = side_prob(settle_prob(price, s.strike, left, sigma_1s(self.series.array(t - 900, t + 1))), side)
         row["model"] = round(p_side, 4)
         if not WINDOW[0] <= left < WINDOW[1]:
-            reason = "outside 1-3 min window"
+            reason = "outside 60-150 s window"
         elif side in s.done:
             reason = f"{side.upper()} already traded this session"
         elif push is None:

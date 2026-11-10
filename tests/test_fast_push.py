@@ -102,4 +102,19 @@ def test_break_outside_window_not_traded(tmp_path):
         bot.series.brti[o + sec] = base + (975.0 - base) * (k / 80) ** 4
         bot.step(o + sec, bot.series.brti[o + sec])
     assert not bot.unsettled
-    assert "outside 1-3 min window" in (tmp_path / "breaks.csv").read_text()
+    assert "outside 60-150 s window" in (tmp_path / "breaks.csv").read_text()
+
+
+def test_break_with_160_s_left_is_outside_window(tmp_path):
+    """The window is 60-150 s since 2026-11-10 (shared constant with the breakdown bot)."""
+    from kalshi_btc_bot.fast_push import WINDOW
+    assert WINDOW == (60, 151)
+    bot, o = _bot(tmp_path, [[0.12, 500.0]], [[0.80, 500.0]], "no")
+    bot.session = FPSession("T1", 1000.0, o, o + 900, 1000.0, {"sup": ("no", 980.0)})
+    base = bot.series.brti[o + 659]
+    for k, sec in enumerate(range(660, 741)):  # sharp drop through 980 at 740 s: 160 s left
+        bot.series.brti[o + sec] = base + (975.0 - base) * (k / 80) ** 4
+    for sec in range(660, 741):
+        bot.step(o + sec, bot.series.brti[o + sec])
+    assert not bot.unsettled
+    assert "outside 60-150 s window" in (tmp_path / "breaks.csv").read_text()

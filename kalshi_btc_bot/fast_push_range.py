@@ -6,9 +6,9 @@ at the hourly range ladder as a second market. It is a separate service with its
 
 The rule is the 15-minute bot's rule, unchanged (see fast_push.py):
 * levels fixed at each 15-minute session open; break = BRTI $5 through a level; fast push = the move
-  over the last 15 s in the break direction is at least 2x a normal 15-s move; window 60-179 s left.
+  over the last 15 s in the break direction is at least 2x a normal 15-s move; window 60-150 s left.
 Because the range contracts settle on the hour, only the LAST 15-minute session of each hour
-(xx:45 to xx:00) can trigger a range trade: 1-3 minutes before the hour close.
+(xx:45 to xx:00) can trigger a range trade: 60-150 s before the hour close.
 
 What it buys, about 1 s after a qualifying break:
 * YES on the band BRTI is in now (the band it pushed into), and
@@ -79,7 +79,7 @@ class FastPushRangePaper(FastPushPaper):
         if s.close_ts % 3600:
             reason = "not the last 15 minutes of the hour"
         elif not WINDOW[0] <= left < WINDOW[1]:
-            reason = "outside 1-3 min window"
+            reason = "outside 60-150 s window"
         elif side in s.done:
             reason = f"{side.upper()} already judged this session"
         elif push is None:
