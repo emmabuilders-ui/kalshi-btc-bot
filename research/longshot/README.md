@@ -34,3 +34,10 @@ for Dec-Aug and frozen for Sep-Oct. The table is well calibrated out of sample (
 12.5%; the table says 12%). It values the normal rule's trades at 12.7% vs 9.55c paid, matching the 12.4% actual win rate.
 Trading straight off the table (table - price - fee >= 2c) is weaker: Dec-Aug 3,797 trades 6.2c paid, 6.8% won, +0.16c;
 Sep-Oct 612 trades +2.15c. The extra trades it adds (cheap 1-6c contracts, 6-10 min left) have no edge on Dec-Aug (-0.6c).
+
+## Rank (percentile) version (`rank.py`, 2026-11-10, Michael asked for a tau-style measure instead of SD)
+Distance expressed as the share of trailing 60- or 120-minute moves over the same horizon that were at least as large
+(a percentile, outlier-proof), fair = half that share. Weaker predictor than the SD version (AUC 0.72 vs 0.75 on
+Dec-Aug), overstates odds more at the top (predicts 17%, reality 10%), and the margin rule loses on Sep-Oct at every
+margin (e.g. 8c: Dec-Aug +1.49c, Sep-Oct -1.56c). The SD uses all 3,600 one-second returns in the window; the percentile
+has only ~60 independent moves of a 1-minute horizon, so it is coarser.
