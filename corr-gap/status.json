@@ -1,10 +1,10 @@
 {
- "updated_utc": "2026-11-10T13:20:47+00:00",
+ "updated_utc": "2026-11-10T14:20:30+00:00",
  "settled_trades": 0,
  "wins": 0,
  "pnl_dollars": 0,
- "proxy_bias": 0.0,
+ "proxy_bias": 2.81,
  "session": null,
- "max_mem_mb": 113,
+ "max_mem_mb": 131,
  "note": ""
 }
