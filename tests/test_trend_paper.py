@@ -75,7 +75,7 @@ def test_tight_rule_buys_once_per_hour_when_price_and_projection_stay_inside(tmp
     assert len(rows) == 2 and ",yes,1," in rows[1]
     sig = (tmp_path / "signals.csv").read_text().splitlines()
     assert sig[0].startswith("time_utc,ticker,side,mins_left,floor,cap,brti,slope_per_s,projection,centre_dist_pct")
-    assert "B,YES,10,1000,1024.99,1010.0,0.0,1010.0,20.0,0.78" in sig[1]
+    assert "B,YES,10,1000,1024.99,1010.0,0.0,1010.0,20.0,,0.78" in sig[1]   # model blank: flat test prices give no volatility
 
 
 def test_skips_when_trend_leaves_the_band_or_price_is_too_far_from_centre(tmp_path):

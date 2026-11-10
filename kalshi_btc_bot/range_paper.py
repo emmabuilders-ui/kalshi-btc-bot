@@ -6,7 +6,11 @@ Rule (Michael, 2026-11-01; backtest Jan-Oct 2026 with the look-ahead fix):
   the 14 bands nearest the BRTI price 30 minutes before the close.
 * Every minute it estimates the chance BRTI settles inside each band (finish-in-range model:
   empirical standardized return quantiles, scaled by 100-minute 1-minute volatility, bucketed
-  by 10-vs-100 minute volatility state). The NO chance is 1 minus that.
+  by 10-vs-100 minute volatility state). The NO chance is 1 minus that. Since 2026-11-10 the
+  time left is shrunk by 40 s (was 30 s): Kalshi settles on the 60-second BRTI average, whose
+  variance equals that of the spot price 40 s before the close. On Dec 2025-Oct 2026 BRTI the
+  40-s version has the better Brier score at every minute and adds about 25 YES trades a month
+  (96% won at 92c) that the 30-s version skipped.
 * Buy a side when its ask is 75-89c and the model is 10+ points above the ask, or the ask is
   90-99c and the model is 2+ points above the ask.
 * Checks start at 30 minutes left (the earliest the backtest could test); the bot takes the
@@ -47,8 +51,15 @@ ET = ZoneInfo("America/New_York")
 
 
 # ------------------------------------------------------------------------------ the model
+SETTLE_SHRINK_MIN = 40 / 60   # settlement = 60-s BRTI average: its variance is that of the spot 40 s before the close
+
+
 class RangeModel:
-    def __init__(self, path: str | Path | None = None):
+    def __init__(self, path: str | Path | None = None, shrink_minutes: float = SETTLE_SHRINK_MIN):
+        """`shrink_minutes` is taken off the time left before scaling the move table: 40 s is the
+        random-walk-correct figure for a 60-second settlement average (see settlement.py). The
+        rebuilt table was fitted with 30 s and must keep it (range_multi.rebuilt_model)."""
+        self.shrink = shrink_minutes
         if path is None:
             raw = resources.files("kalshi_btc_bot").joinpath("data/range_cdf.json").read_text()
         else:
@@ -74,7 +85,7 @@ class RangeModel:
     def p_inside(self, price: float, lo: float | None, hi: float | None, minutes_left: float,
                  s100: float, vb: int) -> float:
         """Chance the settlement lands in [lo, hi] (hi given as the cap strike, e.g. 86399.99)."""
-        te = minutes_left - 0.5
+        te = max(minutes_left - self.shrink, 1 / 60)
         scale = s100 * math.sqrt(te)
         c = self.cdf[(self.bucket(minutes_left), vb)]
         F = lambda x: float(np.interp(x, c, self.qs, left=0.0, right=1.0))
@@ -228,6 +239,26 @@ class RangePaper:
                 return np.array([])
             out.append(v)
         return np.array(out)
+
+    def band_edges(self, m: dict) -> tuple[float | None, float | None]:
+        lo, hi = _f(m.get("floor_strike")), _f(m.get("cap_strike"))
+        if m.get("strike_type") == "greater":
+            hi = None
+        elif m.get("strike_type") == "less":
+            lo = None
+        return lo, hi
+
+    def model_yes(self, t: int, price: float, m: dict, left: int) -> tuple[float | None, float | None]:
+        """Settlement-aware chance the band wins (range model, 40-s shrink) and the one-sd settlement move in
+        dollars at this time left; (None, None) without 100 minutes of BRTI history."""
+        closes = self.minute_closes(t)
+        v = self.model.vol(closes) if len(closes) else None
+        if v is None:
+            return None, None
+        s100, vb = v
+        lo, hi = self.band_edges(m)
+        sd = price * s100 * math.sqrt(max(left - self.model.shrink, 1 / 60))
+        return self.model.p_inside(price, lo, hi, left, s100, vb), sd
 
     # ---------------------------------------------------------------- the rule
     def check(self, t: int):

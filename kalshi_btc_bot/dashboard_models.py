@@ -82,6 +82,8 @@ th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--card)
 <div class="top"><a class="navbtn" href="../">← Main chart</a><h1>ML model bots</h1>
 <span class="mut">Paper only, no real orders · times ET · updates every 10 s</span><span id="err" class="lost"></span></div>
 <div class="tiles" id="tiles"></div>
+<div class="card" style="padding:8px"><h2 style="margin:4px 4px 6px">Bitcoin and the ML bots' trades</h2>
+<iframe src="../?v=models" title="Bitcoin chart with the ML bots' trades" style="width:100%;height:600px;border:0;display:block"></iframe></div>
 <div class="card"><h2>Profit, settled trades</h2><div class="legend" id="leg"></div><canvas id="pl" height="170"></canvas></div>
 <div class="card"><h2>Open positions</h2><div class="scroll"><table id="opn"></table></div></div>
 <div class="card"><h2>All trades</h2><div class="scroll"><table id="trd"></table></div></div>

@@ -8,7 +8,9 @@ The rule (locked 2026-10-31 and tested on Dec 2025 - Apr 2026 data it had never 
     price at open;
   - previous 15-minute low, if it is more than $10 below the price at open.
 * Trigger: the FIRST time BRTI trades $5 below one of those levels, the entry is the next
-  5-second mark. It counts only if that entry is 60-179 s before close.
+  5-second mark. It counts only if that entry is 60-150 s before close (was 60-179 s until
+  2026-11-10: on 11,235 real $5 breaks, the 151-180 s bucket is the one Kalshi already prices
+  right, and the break side there loses; 60-150 s with the settlement gate kept the edge).
 * Buy NO (at any price up to the cap) only if the MA stack is not
   already pointing down (skip if price < SMA15m < SMA60m < SMA24h).
 * NO price cap 96c (the edge sits below 97c).
@@ -46,8 +48,11 @@ import numpy as np
 import requests
 
 from .logpush import git_push_logs
+from .settlement import settle_prob, side_prob, sigma_1s, worth_it
 
 log = logging.getLogger("kalshi_btc_bot")
+
+WINDOW = (60, 151)          # seconds left at entry: 60 <= left < 151 (shared by the fast push bots)
 
 KALSHI = "https://api.elections.kalshi.com"
 API = "/trade-api/v2"
@@ -529,12 +534,15 @@ class LateBreakdownPaper:
         S = float(b[-1])
         stack = ma_stack(b, len(b) - 1)
         lo, hi = (0.0, self.max_price) if side == "no" else self.yes_range
+        # settlement-aware chance of this side: Kalshi settles on the 60-s BRTI average, so a $5 break with
+        # 1-3 minutes left says much less than the spot price suggests (added 2026-11-10)
+        p_side = side_prob(settle_prob(S, s.strike, left, sigma_1s(b[-901:])), side)
         row = {"time_utc": _iso(now), "ticker": s.ticker, "side": side.upper(), "level": name,
                "level_price": round(s.levels[name], 2), "secs_left": left, "price": round(S, 2),
-               "strike": s.strike, "stack": stack, "proxy_bias": round(self.series.bias, 2)}
+               "strike": s.strike, "stack": stack, "model": round(p_side, 4), "proxy_bias": round(self.series.bias, 2)}
         reason = ""
-        if te > 840 or not 60 <= left < 180:
-            reason = "outside 1-2 min window"
+        if te > 840 or not WINDOW[0] <= left < WINDOW[1]:
+            reason = "outside 60-150 s window"
         elif stack == ("down" if side == "no" else "up"):
             reason = f"MA stack already {stack}"
         book = None
@@ -552,6 +560,8 @@ class LateBreakdownPaper:
                 reason = "empty book"
             elif not lo <= ask <= hi:
                 reason = f"{side.upper()} ask {ask:.2f} outside {lo:.2f}-{hi:.2f}"
+            elif not worth_it(p_side, ask):
+                reason = f"settlement chance {p_side:.2f} under ask {ask:.2f} + fee"
         row["decision"] = f"BUY {side.upper()}" if not reason else "skip: " + reason
         self._append("signals.csv", row)
         log.info("%s %s", s.ticker, row["decision"])
@@ -564,7 +574,8 @@ class LateBreakdownPaper:
         fee = kalshi_fee(n, avg)
         trade = {"time_utc": _iso(now), "ticker": s.ticker, "side": side.upper(), "level": name,
                  "secs_left": left, "contracts": n, "avg_price": round(avg, 4), "fee": fee,
-                 "cost": round(n * avg + fee, 2), "close_ts": s.close_ts, "result": "", "won": "", "pnl": ""}
+                 "cost": round(n * avg + fee, 2), "model": round(p_side, 4), "close_ts": s.close_ts,
+                 "result": "", "won": "", "pnl": ""}
         self.unsettled.append(trade)
         self._save_open()
         log.info("PAPER BUY %d %s %s @ %.2f (fee %.2f)", n, side.upper(), s.ticker, avg, fee)

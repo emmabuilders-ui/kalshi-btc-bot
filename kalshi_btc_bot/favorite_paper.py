@@ -10,6 +10,14 @@ The rule, checked at each minute mark with 3, 2 and 1 minutes left before the ho
 * for each band not already held: if the YES ask is 75c to 84c, buy YES, walking the book up to 84c,
   20 contracts, held to settlement. One position per band per hour, first qualifying minute wins.
 
+Settlement gate (added 2026-11-10, after the 60-second-average study): Kalshi settles on the 60-s BRTI
+average, so with 1-3 minutes left a band whose edge is close to the price in volatility terms is a coin
+flip whatever the ask says. The bot now also requires BRTI inside the band with a cushion to the nearer
+edge of at least MIN_CUSHION_SD standard deviations of the settlement move (price x 100-minute 1-min
+volatility x sqrt(minutes left - 40 s)). Dec 2025-Oct 2026 replay: trades with a cushion under 0.5 sd
+won 77% at 78.6c (-1.5c), 0.5-1.5 sd won 83% at 80c (+3.3c); 116 trades were taken with BRTI already
+outside the band (18% won). The range model's settlement-aware YES chance is logged as `model`.
+
 Backtest caveats: it used the 1-minute candle's closing ask, so a fill at that price is assumed; the
 range books are thin, and the edge is 2-3c, so fills decide everything. Own logs
 (paper-logs-favorite branch); nothing about the other bots changes.
@@ -25,6 +33,17 @@ from .range_paper import CONTRACTS, N_BANDS, RangePaper, _f, _iso, band_mid, eve
 
 LOW, HIGH = 0.75, 0.84      # YES ask window, inclusive, to the cent
 MINUTES = 3                 # start checking with this many minutes left (then 2, then 1)
+MIN_CUSHION_SD = 0.5        # BRTI must sit inside the band, at least this many settlement sds from the nearer edge
+
+
+def cushion_sd(price: float, lo: float | None, hi: float | None, sd: float | None) -> float | None:
+    """Distance from BRTI to the nearer band edge in settlement standard deviations; negative when
+    BRTI is outside the band; None when there is no volatility reading (never skip on a missing sd)."""
+    if sd is None or not sd > 0:
+        return None
+    top = None if hi is None else hi + 0.01
+    d = min(price - lo if lo is not None else float("inf"), top - price if top is not None else float("inf"))
+    return d / sd
 
 
 def favorite_ok(ask: float | None) -> bool:
@@ -56,10 +75,21 @@ class FavoritePaper(RangePaper):
             if tk in self.held:
                 continue
             ya = _f(m.get("yes_ask_dollars"))
-            if favorite_ok(ya):
-                self.enter(t, close, left, m, ya, price)
+            if not favorite_ok(ya):
+                continue
+            p_yes, sd = self.model_yes(t, price, m, left)
+            lo, hi = self.band_edges(m)
+            cush = cushion_sd(price, lo, hi, sd)
+            if cush is not None and cush < MIN_CUSHION_SD:
+                self._append("skips.csv", {"time_utc": _iso(t), "ticker": tk, "mins_left": left, "ask": ya,
+                                           "brti": round(price, 2), "floor": m.get("floor_strike"),
+                                           "cap": m.get("cap_strike"), "cushion_sd": round(cush, 2),
+                                           "model": "" if p_yes is None else round(p_yes, 4),
+                                           "reason": "outside band" if cush < 0 else f"cushion {cush:.2f} sd < {MIN_CUSHION_SD}"})
+                continue
+            self.enter(t, close, left, m, ya, price, p_yes, cush)
 
-    def enter(self, t, close, left, m, ask, price):   # noqa: D102 (simpler signature than the range bot's)
+    def enter(self, t, close, left, m, ask, price, p_yes=None, cush=None):   # noqa: D102 (simpler signature than the range bot's)
         tk = m["ticker"]
         try:
             book = self.k.orderbook(tk)
@@ -70,6 +100,7 @@ class FavoritePaper(RangePaper):
         n, avg = fill(other, self.contracts, HIGH)
         row = {"time_utc": _iso(t), "ticker": tk, "side": "YES", "mins_left": left,
                "floor": m.get("floor_strike"), "cap": m.get("cap_strike"), "brti": round(price, 2),
+               "model": "" if p_yes is None else round(p_yes, 4), "cushion_sd": "" if cush is None else round(cush, 2),
                "ask_snapshot": ask, "book_best": round(1 - other[0][0], 4) if other else "",
                "limit": HIGH, "filled": n, "avg_price": round(avg, 4) if avg else "", "book": json.dumps(other[:6])}
         self._append("signals.csv", row)
@@ -79,7 +110,8 @@ class FavoritePaper(RangePaper):
         fee = kalshi_fee(n, avg)
         self.held[tk] = {"time_utc": _iso(t), "ticker": tk, "side": "YES", "mins_left": left,
                          "contracts": n, "avg_price": round(avg, 4), "fee": fee,
-                         "cost": round(n * avg + fee, 2), "close_ts": close}
+                         "cost": round(n * avg + fee, 2), "model": "" if p_yes is None else round(p_yes, 4),
+                         "close_ts": close}
         self._save_open()
         log.info("PAPER BUY %d YES %s @ %.4f (%d min left)", n, tk, avg, left)
 

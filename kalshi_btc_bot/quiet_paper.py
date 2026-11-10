@@ -86,6 +86,7 @@ class QuietPaper(RangePaper):
 
     def enter(self, t, close, left, m, ask, price, move, cush):   # noqa: D102
         tk = m["ticker"]
+        p_yes, _sd = self.model_yes(t, price, m, left)   # settlement-aware chance, for the dashboard
         try:
             book = self.k.orderbook(tk)
         except Exception as e:
@@ -96,6 +97,7 @@ class QuietPaper(RangePaper):
         row = {"time_utc": _iso(t), "ticker": tk, "side": "YES", "mins_left": left,
                "floor": m.get("floor_strike"), "cap": m.get("cap_strike"), "brti": round(price, 2),
                "move": round(move, 2), "cushion": round(cush, 2), "move_share": round(abs(move) / cush, 3),
+               "model": "" if p_yes is None else round(p_yes, 4),
                "ask_snapshot": ask, "book_best": round(1 - other[0][0], 4) if other else "",
                "limit": HIGH, "filled": n, "avg_price": round(avg, 4) if avg else "", "book": json.dumps(other[:6])}
         self._append("signals.csv", row)
@@ -105,7 +107,7 @@ class QuietPaper(RangePaper):
         fee = kalshi_fee(n, avg)
         self.held[tk] = {"time_utc": _iso(t), "ticker": tk, "side": "YES", "mins_left": left,
                          "contracts": n, "avg_price": round(avg, 4), "fee": fee,
-                         "cost": round(n * avg + fee, 2), "close_ts": close}
+                         "cost": round(n * avg + fee, 2), "model": "" if p_yes is None else round(p_yes, 4), "close_ts": close}
         self.hours_traded.add(close)
         self.hours_traded = {c for c in self.hours_traded if c >= close - 7200}
         self._save_open()
