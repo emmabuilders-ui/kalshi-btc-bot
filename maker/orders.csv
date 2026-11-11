@@ -92,3 +92,5 @@ time_utc,event,ticker,bid,improved,queue_ahead,filled,contracts,mins_left,ask_at
 2026-11-10 23:56:56,done,KXBTC-26NOV1019-B73650,0.79,0,19.0,20,20,4,0.8,0.8,fully filled
 2026-11-11 03:56:00,post,KXBTC-26NOV1023-B73650,0.78,0,225.0,0,20,4,0.79,0.79,
 2026-11-11 03:57:00,done,KXBTC-26NOV1023-B73650,0.78,0,166.13,0,20,4,0.79,0.79,cancel at 3 min left
+2026-11-11 11:56:00,post,KXBTC-26NOV1107-B73950,0.72,1,0.0,0,20,4,0.75,0.75,
+2026-11-11 11:57:00,done,KXBTC-26NOV1107-B73950,0.72,1,0.0,0,20,4,0.75,0.75,cancel at 3 min left
