@@ -125,6 +125,12 @@ def main(argv=None) -> None:
     ls.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     ls.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    bm = sub.add_parser("paper-bandml", help="paper trade the hourly band YES ML rule (7-24 min left, BRTI inside the band; no orders are sent)")
+    bm.add_argument("--out", default="runs/bandml")
+    bm.add_argument("--contracts", type=int, default=10, help="contracts per paper trade")
+    bm.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    bm.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     d = sub.add_parser("dashboard", help="serve a live chart of the paper bots (read-only)")
     d.add_argument("--port", type=int, default=8080)
     d.add_argument("--token-file", default="/etc/kalshi-bot/dash_token", help="file holding the secret page path")
@@ -143,6 +149,7 @@ def main(argv=None) -> None:
     d.add_argument("--model-gap", default="/opt/kalshi-logs-model-gap/model-gap")
     d.add_argument("--corr-gap", default="/opt/kalshi-logs-corr-gap/corr-gap")
     d.add_argument("--longshot", default="/opt/kalshi-logs-longshot/longshot")
+    d.add_argument("--bandml", default="/opt/kalshi-logs-bandml/bandml")
 
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
@@ -226,6 +233,9 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-longshot":
         from .longshot_paper import from_env as ls_env
         ls_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-bandml":
+        from .bandml_paper import from_env as bm_env
+        bm_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "dashboard":
         from pathlib import Path
         from .dashboard import serve
@@ -234,7 +244,7 @@ def main(argv=None) -> None:
                "range5": Path(a.range5), "fastpush_range": Path(a.fastpush_range), "favorite": Path(a.favorite),
                "trend_broad": Path(a.trend_broad), "trend_tight": Path(a.trend_tight), "maker": Path(a.maker), "quiet": Path(a.quiet),
                "squeeze": Path(a.squeeze), "squeeze_maker": Path(a.squeeze_maker),
-               "model_gap": Path(a.model_gap), "corr_gap": Path(a.corr_gap), "longshot": Path(a.longshot)})
+               "model_gap": Path(a.model_gap), "corr_gap": Path(a.corr_gap), "longshot": Path(a.longshot), "bandml": Path(a.bandml)})
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)

@@ -52,3 +52,28 @@ about 30c at these prices, so the standard error is roughly 30c/sqrt(n).
 - No changes to the margin, the 15c ceiling, the minutes checked or the side during the test. Any condition added
   from signals.csv counts only on data after the day it was coded.
 - No new scans of Dec-Oct to rescue the bot. Live trading stays locked off.
+
+## Band ML bot (`kalshi-bandml`), added 2026-11-11
+
+Rule: hourly range bands (KXBTC, the 14 nearest BRTI 30 minutes before the close, "between" bands only). Buy YES at the
+first minute with 24 down to 7 minutes left where BRTI is inside the band and the Correction model's chance minus the YES
+ask minus the taker fee is at least 5 points; two-sided quote, spread at most 10c; one position per band; 10 contracts
+(Michael's choice), held to settlement. The model is gradient-boosted trees fit once on Dec 2025 - Aug 2026 and frozen
+(data/band_ml_correction.json). Paper only.
+
+Backtest of the shipped model (research/hourly_ml/, one trade per band, candle ask, after fee): Mar-Aug (monthly walk-forward)
+1,678 trades, 57.7% vs 52.2c, +3.9c, 6 of 6 months; Sep-Oct (frozen fit) 428 trades, 62.4% vs 54.9c, +5.9c, 2 of 2;
+Oct 26-31 41 trades, 65.9% vs 55.6c, +8.6c. The 7-24 minute window and the inside-band condition were chosen after looking at
+these same results, so the real edge is probably lower and only the paper test is clean.
+
+Decision, fixed before the first paper trade; judge on paper fills only, win % minus average price after the fee, with the
+win % always shown beside the price. Per-trade standard deviation is about 47c, so the standard error is roughly 47c/sqrt(n).
+
+- At 300 trades (about 6 weeks at 7 a day, standard error about 2.7c): edge under +1.0c retires the bot.
+- At 800 trades (standard error about 1.7c): +2.0c or more with t at least 2 may be considered for small real size, which
+  is Michael's call alone; under +1.0c retires it; in between runs on to 1,300 trades.
+- Report the edge at the logged fills and again with each fill 1c worse.
+- No refit, no change to the model, the 5-point gap, the 7-24 minute window, the inside-band condition or the side during
+  the test. A condition added later from signals.csv or skips.csv counts only on data after the day it was coded.
+- skips.csv logs looks that cleared the gap but had BRTI outside the band, so that condition can be checked on new data.
+- No new scans of Mar-Oct to rescue the bot. Live trading stays locked off.
