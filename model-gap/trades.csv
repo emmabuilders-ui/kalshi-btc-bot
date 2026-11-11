@@ -1,0 +1,3 @@
+time_utc,ticker,side,level,secs_left,model_prob,gap_pts,contracts,avg_price,fee,cost,result,won,pnl
+2026-11-11 00:22:00,KXBTC15M-26NOV101930-30,NO,breakout,480,0.8495,5.75,20,0.78,0.25,15.85,no,1,4.15
+2026-11-11 01:06:00,KXBTC15M-26NOV102015-15,NO,cushion,540,0.8582,7.58,20,0.77,0.25,15.65,no,1,4.35
