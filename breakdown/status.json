@@ -1,10 +1,10 @@
 {
- "updated_utc": "2026-11-11T22:26:55+00:00",
+ "updated_utc": "2026-11-11T23:17:21+00:00",
  "settled_trades": 15,
  "wins": 13,
  "pnl_dollars": 31.25,
- "proxy_bias": 1.81,
- "session": "KXBTC15M-26NOV111730-30",
- "max_mem_mb": 96,
+ "proxy_bias": 0.0,
+ "session": "KXBTC15M-26NOV111830-30",
+ "max_mem_mb": 78,
  "note": ""
 }
