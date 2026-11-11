@@ -1,0 +1,2 @@
+time_utc,ticker,mins_left,ask,brti,floor,cap,cushion_sd,model,reason
+2026-11-11 01:58:00,KXBTC-26NOV1021-B73550,2,0.78,73520.67,73500,73599.99,0.47,0.7003,cushion 0.47 sd < 0.5
