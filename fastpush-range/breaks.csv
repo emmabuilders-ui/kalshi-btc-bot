@@ -2478,3 +2478,15 @@ break_utc,session,side,level,level_price,secs_left,brti,push,lag_s,decision
 2026-11-11 18:02:02,KXBTC15M-26NOV111315-15,NO,prev15_low,74362.26,777,74350.68,0.53,0.9,skip: not the last 15 minutes of the hour
 2026-11-11 18:15:13,KXBTC15M-26NOV111330-30,YES,hard_high,74363.22,886,74377.84,0.98,22.6,skip: not the last 15 minutes of the hour
 2026-11-11 18:19:00,KXBTC15M-26NOV111330-30,YES,prev15_high,74458.15,659,74464.2,0.78,5.9,skip: not the last 15 minutes of the hour
+2026-11-11 18:31:08,KXBTC15M-26NOV111345-45,YES,hard_high,74466.1,831,74471.37,1.51,0.5,skip: not the last 15 minutes of the hour
+2026-11-11 18:31:14,KXBTC15M-26NOV111345-45,YES,prev15_high,74481.6,825,74487.65,2.1,1.0,skip: not the last 15 minutes of the hour
+2026-11-11 18:31:59,KXBTC15M-26NOV111345-45,YES,round500_high,74500.0,780,74513.71,1.45,0.2,skip: not the last 15 minutes of the hour
+2026-11-11 18:52:14,KXBTC15M-26NOV111400-00,NO,prev15_low,74384.94,465,74374.86,1.04,3.7,skip: outside 60-150 s window
+2026-11-11 18:52:24,KXBTC15M-26NOV111400-00,NO,hard_low,74376.76,455,74371.61,0.94,1.1,skip: outside 60-150 s window
+2026-11-11 19:01:00,KXBTC15M-26NOV111415-15,NO,hard_low,74376.76,839,74368.22,1.43,1.0,skip: not the last 15 minutes of the hour
+2026-11-11 19:03:53,KXBTC15M-26NOV111415-15,NO,prev15_low,74325.39,666,74320.17,0.15,1.3,skip: not the last 15 minutes of the hour
+2026-11-11 19:04:06,KXBTC15M-26NOV111415-15,NO,prev60_low,74321.06,653,74314.48,0.63,1.3,skip: not the last 15 minutes of the hour
+2026-11-11 19:15:47,KXBTC15M-26NOV111430-30,NO,prev15_low,74168.73,852,74149.59,2.9,3.2,skip: not the last 15 minutes of the hour
+2026-11-11 19:15:47,KXBTC15M-26NOV111430-30,NO,prev60_low,74168.73,852,74149.59,2.9,3.2,skip: not the last 15 minutes of the hour
+2026-11-11 19:18:52,KXBTC15M-26NOV111430-30,NO,hard_low,74137.48,667,74129.22,1.92,2.4,skip: not the last 15 minutes of the hour
+2026-11-11 19:25:24,KXBTC15M-26NOV111430-30,YES,hard_high,74232.51,275,74240.82,3.06,7.9,skip: not the last 15 minutes of the hour
