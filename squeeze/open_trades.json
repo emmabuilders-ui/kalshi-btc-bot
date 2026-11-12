@@ -1,1 +1,18 @@
-[]
+[
+ {
+  "time_utc": "2026-11-12 11:16:59",
+  "ticker": "KXBTC15M-26NOV120630-30",
+  "side": "NO",
+  "level": "15-min squeeze",
+  "secs_left": 781,
+  "lag_s": 0,
+  "contracts": 20,
+  "avg_price": 0.85,
+  "fee": 0.18,
+  "cost": 17.18,
+  "close_ts": 1794483000,
+  "result": "",
+  "won": "",
+  "pnl": ""
+ }
+]
