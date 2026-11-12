@@ -31,6 +31,7 @@ The level-based break bots (hard levels, moving-average check) are not part of t
 from __future__ import annotations
 
 import csv
+import gzip
 import json
 import logging
 import os
@@ -143,6 +144,8 @@ class Coin:
     last_market_try: float = 0.0
     last_settle: float = 0.0
     last_poll_ok: int = 0
+    last_flush: int = 0
+    logged_to: int = 0               # last index second written to the price log
 
 
 class CoinBreakPaper:
@@ -199,12 +202,35 @@ class CoinBreakPaper:
             "session": coin.session.ticker if coin.session else None,
             "max_mem_mb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024, "note": note}, indent=1))
 
+    def _log_prices(self, coin: Coin, now: int):
+        """Append the index seconds not yet logged to hourly files out/<COIN>/prices/YYYY-MM-DD/HH.csv.gz (one gzip
+        member per flush, header "unix_s,price"). The dashboard chart reads only these files, so it makes no API
+        calls. A restart re-logs the last hour; the reader keeps one value per second."""
+        if now - coin.last_flush < 60 or not coin.series:
+            return
+        coin.last_flush = now
+        new = sorted(t for t in coin.series if t > coin.logged_to)
+        by_hour: dict[int, list[int]] = {}
+        for t in new:
+            by_hour.setdefault(t // 3600 * 3600, []).append(t)
+        for h, ts_ in by_hour.items():
+            path = coin.out / "prices" / datetime.fromtimestamp(h, timezone.utc).strftime("%Y-%m-%d") / (
+                datetime.fromtimestamp(h, timezone.utc).strftime("%H") + ".csv.gz")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            text = ("" if path.exists() else "unix_s,price\n") + "".join(f"{t},{coin.series[t]}\n" for t in ts_)
+            with path.open("ab") as f:
+                f.write(gzip.compress(text.encode()))
+        if new:
+            coin.logged_to = new[-1]
+
     def _push(self, now: float):
         if not self.push_logs or now - self._last_push < 3600:
             return
         self._last_push = now
         try:
-            git_push_logs(self.out, f"paper log {datetime.now(timezone.utc):%Y-%m-%d %H:%M}")
+            hour = datetime.now(timezone.utc).strftime("%Y-%m-%d/%H")   # this hour's price files are still being written
+            git_push_logs(self.out, f"paper log {datetime.now(timezone.utc):%Y-%m-%d %H:%M}",
+                          unstage=[f"{c}/prices/{hour}.csv.gz" for c in self.coins])
         except Exception as e:
             log.warning("log push failed: %s", e)
 
@@ -245,6 +271,8 @@ class CoinBreakPaper:
             return None
         s = Session(m["ticker"], m["strike"], m["open_ts"], m["close_ts"], cursor=max(m["open_ts"], m["close_ts"] - WATCH_SECS))
         log.info("%s session %s strike %s", coin.name, s.ticker, s.strike)
+        self._append(coin, "sessions.csv", {"ticker": s.ticker, "open_utc": _iso(s.open_ts), "close_utc": _iso(s.close_ts),
+                                            "strike": s.strike})
         return s
 
     # ------------------------------------------------------------------------------ the rule
@@ -375,6 +403,7 @@ class CoinBreakPaper:
     def tick_coin(self, coin: Coin, now: int, latest: int | None):
         if latest is None:
             return
+        self._log_prices(coin, now)
         s = coin.session
         if s is None or now >= s.close_ts:
             coin.session = s = self.new_session(coin, now)
