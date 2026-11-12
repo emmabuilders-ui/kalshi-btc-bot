@@ -774,7 +774,7 @@ Wants=network-online.target
 [Service]
 User=$USER_
 EnvironmentFile=$CONF/env
-ExecStart=$APP/.venv/bin/python -m kalshi_btc_bot dashboard --port 8080 --token-file $CONF/dash_token --breakdown $LOGS/breakdown --range $RANGE_LOGS/range --fastpush $FP_LOGS/fastpush --range5 $R5_LOGS/range5 --fastpush-range $FPR_LOGS/fastpush-range --favorite $FAV_LOGS/favorite --trend-broad $TB_LOGS/trend-broad --trend-tight $TT_LOGS/trend-tight --maker $MK_LOGS/maker --quiet $QT_LOGS/quiet --squeeze $SQ_LOGS/squeeze --squeeze-maker $SQM_LOGS/squeeze-maker --model-gap $MG_LOGS/model-gap --corr-gap $CG_LOGS/corr-gap --longshot $LS_LOGS/longshot --bandml $BM_LOGS/bandml
+ExecStart=$APP/.venv/bin/python -m kalshi_btc_bot dashboard --port 8080 --token-file $CONF/dash_token --breakdown $LOGS/breakdown --range $RANGE_LOGS/range --fastpush $FP_LOGS/fastpush --range5 $R5_LOGS/range5 --fastpush-range $FPR_LOGS/fastpush-range --favorite $FAV_LOGS/favorite --trend-broad $TB_LOGS/trend-broad --trend-tight $TT_LOGS/trend-tight --maker $MK_LOGS/maker --quiet $QT_LOGS/quiet --squeeze $SQ_LOGS/squeeze --squeeze-maker $SQM_LOGS/squeeze-maker --model-gap $MG_LOGS/model-gap --corr-gap $CG_LOGS/corr-gap --longshot $LS_LOGS/longshot --bandml $BM_LOGS/bandml --coinbreak $CB_LOGS/coinbreak
 Restart=always
 RestartSec=30
 

@@ -66,3 +66,22 @@ def test_small_answers_are_not_compressed():
         assert enc is None and body == b"[]"
     finally:
         srv.shutdown()
+
+
+def test_coinbreak_bot_is_in_the_performance_table(tmp_path):
+    """The ETH/SOL/XRP break bot keeps one folder per coin; each coin gets its own row."""
+    import csv
+    for coin, won in (("ETH", "1"), ("SOL", "0")):
+        d = tmp_path / coin
+        d.mkdir()
+        with (d / "trades.csv").open("w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["time_utc", "coin", "ticker", "side", "contracts", "avg_price", "fee", "cost", "won", "pnl"])
+            w.writerow(["2026-11-12 18:00:00", coin, "T1", "YES", 20, 0.55, 0.35, 11.35, won, 8.65 if won == "1" else -11.35])
+
+    class Fake:
+        logs = {"coinbreak": tmp_path}
+    rows = {r["bot"]: r for r in Dashboard.perf(Fake())}
+    assert rows["Break + gate ETH (15-min)"]["trades"] == 1 and rows["Break + gate ETH (15-min)"]["wins"] == 1
+    assert rows["Break + gate SOL (15-min)"]["wins"] == 0
+    assert rows["Break + gate XRP (15-min)"]["trades"] == 0          # no folder yet: an empty row, not an error

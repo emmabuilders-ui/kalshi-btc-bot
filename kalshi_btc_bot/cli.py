@@ -157,6 +157,7 @@ def main(argv=None) -> None:
     d.add_argument("--corr-gap", default="/opt/kalshi-logs-corr-gap/corr-gap")
     d.add_argument("--longshot", default="/opt/kalshi-logs-longshot/longshot")
     d.add_argument("--bandml", default="/opt/kalshi-logs-bandml/bandml")
+    d.add_argument("--coinbreak", default="/opt/kalshi-logs-coinbreak/coinbreak")
 
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
@@ -255,7 +256,8 @@ def main(argv=None) -> None:
                "range5": Path(a.range5), "fastpush_range": Path(a.fastpush_range), "favorite": Path(a.favorite),
                "trend_broad": Path(a.trend_broad), "trend_tight": Path(a.trend_tight), "maker": Path(a.maker), "quiet": Path(a.quiet),
                "squeeze": Path(a.squeeze), "squeeze_maker": Path(a.squeeze_maker),
-               "model_gap": Path(a.model_gap), "corr_gap": Path(a.corr_gap), "longshot": Path(a.longshot), "bandml": Path(a.bandml)})
+               "model_gap": Path(a.model_gap), "corr_gap": Path(a.corr_gap), "longshot": Path(a.longshot), "bandml": Path(a.bandml),
+               "coinbreak": Path(a.coinbreak)})
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)

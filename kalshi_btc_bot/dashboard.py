@@ -90,6 +90,9 @@ def range_positions(range_dir: Path) -> list[dict]:
     return out
 
 
+COINBREAK = ("ETH", "SOL", "XRP")      # the coins of the break-with-gate bot (kalshi-coinbreak)
+
+
 def settled_summary(rows: list[dict]) -> dict:
     pnl = [_num(r.get("pnl")) for r in rows]
     pnl = [x for x in pnl if x is not None]
@@ -758,6 +761,7 @@ class Dashboard:
         cg = L.get("corr_gap") or Path("/nonexistent")
         lsh = L.get("longshot") or Path("/nonexistent")
         bml = L.get("bandml") or Path("/nonexistent")
+        cbk = L.get("coinbreak") or Path("/nonexistent")   # ETH / SOL / XRP break-with-gate bot, one folder per coin
         hour_close = (int(time.time()) // 3600 + 1) * 3600
         return {
             "now": time.time(), "prices": pts, "error": self.err, "hour_close": hour_close,
@@ -784,7 +788,8 @@ class Dashboard:
                           + pnl_points(_rows(mg / "trades.csv"), "Model gap")
                           + pnl_points(_rows(cg / "trades.csv"), "Correction ML")
                           + pnl_points(_rows(lsh / "trades.csv"), "Longshot")
-                          + pnl_points(_rows(bml / "trades.csv"), "Band ML"),
+                          + pnl_points(_rows(bml / "trades.csv"), "Band ML")
+                          + [pt for c in COINBREAK for pt in pnl_points(_rows(cbk / c / "trades.csv"), f"Break {c}")],
                           key=lambda r: r["time_utc"]),
             "breakdown": settled_summary(_rows(L["breakdown"] / "trades.csv")),
             "fastpush": settled_summary(_rows(L["fastpush"] / "trades.csv")),
@@ -800,6 +805,7 @@ class Dashboard:
             "corr_gap": settled_summary(_rows(cg / "trades.csv")),
             "longshot": settled_summary(_rows(lsh / "trades.csv")),
             "bandml": settled_summary(_rows(bml / "trades.csv")),
+            "coinbreak": {c: settled_summary(_rows(cbk / c / "trades.csv")) for c in COINBREAK},
             "perf": self.perf(),
         }
 
@@ -812,6 +818,8 @@ class Dashboard:
             ("Squeeze", "squeeze"), ("Squeeze maker", "squeeze_maker"), ("Model gap (Direct ML, NO)", "model_gap"),
             ("Correction ML (NO)", "corr_gap"), ("Longshot (15c or less)", "longshot"),
             ("Band ML (YES, 7-24 min)", "bandml"))]
+        for c in COINBREAK:
+            out.append(perf_row(f"Break + gate {c} (15-min)", _rows((L.get("coinbreak") or none) / c / "trades.csv")))
         if L.get("range5"):
             r5 = _rows(L["range5"] / "trades.csv")
             for a in range(1, 6):
@@ -998,9 +1006,9 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>Bot Live Chart</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#66707a;--line:#1b1f24;--grid:#e6e8ec;--grid2:#c3c8cf;
---no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--raw:#b9bec5;--buyzone:#14632f;--fp:#8e44ad;--fpr:#d35400;--fav:#0e8a9e;--tb:#b5179e;--tt:#2b4bd1;--mkr:#7a5c00;--qt:#5b6b00;--sq:#a0522d;--sqm:#006d77;--mg:#9c2f6e;--cg:#b8600f;--ls:#1d7874;--bm:#5d4037;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
+--no:#c0392b;--yes:#1f8a4c;--strike:#2f6fb2;--target:#b8875a;--sup:#1f9a8a;--res:#c2477f;--ladder:#7fa3cf;--ladder-t:#1d4f91;--raw:#b9bec5;--buyzone:#14632f;--fp:#8e44ad;--fpr:#d35400;--fav:#0e8a9e;--tb:#b5179e;--tt:#2b4bd1;--mkr:#7a5c00;--qt:#5b6b00;--sq:#a0522d;--sqm:#006d77;--mg:#9c2f6e;--cg:#b8600f;--ls:#1d7874;--bm:#5d4037;--cbe:#3b5bdb;--cbs:#7c3aed;--cbx:#0e7490;--win:#1f8a4c;--lose:#c0392b;--open:#ebb800;--win-bg:#e6f4ec;--lose-bg:#fbe9e7}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e8eaed;--mut:#9aa3ad;
---line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--raw:#555c65;--buyzone:#3fbf6a;--fp:#c08be0;--fpr:#f39c5a;--fav:#4fc3d6;--tb:#e07ad0;--tt:#7f95ff;--mkr:#d9b44a;--qt:#b5c94a;--sq:#e0916a;--sqm:#4fd1c5;--mg:#e88ac0;--cg:#f0a35c;--ls:#58c4bf;--bm:#bcaaa4;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
+--line:#e8eaed;--grid:#262a30;--grid2:#3d434b;--no:#ef6b5b;--yes:#4cc27e;--strike:#6ea8e8;--target:#d2a87a;--sup:#3cc4b1;--res:#e57aa8;--ladder:#5b80ab;--ladder-t:#7aa7e0;--raw:#555c65;--buyzone:#3fbf6a;--fp:#c08be0;--fpr:#f39c5a;--fav:#4fc3d6;--tb:#e07ad0;--tt:#7f95ff;--mkr:#d9b44a;--qt:#b5c94a;--sq:#e0916a;--sqm:#4fd1c5;--mg:#e88ac0;--cg:#f0a35c;--ls:#58c4bf;--bm:#bcaaa4;--cbe:#8da2ff;--cbs:#b794f6;--cbx:#5fd0e6;--win:#4cc27e;--lose:#ef6b5b;--open:#ffd84d;
 --win-bg:#17301f;--lose-bg:#3a1c19;color-scheme:dark}}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1300px;margin:0 auto;padding:16px}
@@ -1084,6 +1092,9 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <div class="card"><div class="mut">Model gap bot, settled</div><div class="big" id="smg"></div></div>
 <div class="card"><div class="mut">Longshot bot, settled</div><div class="big" id="sls"></div></div>
 <div class="card"><div class="mut">Band ML bot, settled</div><div class="big" id="sbm"></div></div>
+<div class="card"><div class="mut">Break + gate ETH, settled</div><div class="big" id="scbe"></div></div>
+<div class="card"><div class="mut">Break + gate SOL, settled</div><div class="big" id="scbs"></div></div>
+<div class="card"><div class="mut">Break + gate XRP, settled</div><div class="big" id="scbx"></div></div>
 </div>
 <p class="mut">BRTI is the index Kalshi settles on; settlement is its average over the last 60 seconds. Paper trades only. Updates every 2 seconds.</p>
 </div></div>
@@ -1238,7 +1249,7 @@ function panels(){
  $('err').textContent=D.error||'';
  $('clock').textContent=`${last?hms(last[0]):''} ET · 15-min closes ${hm(D.session&&D.session.close_ts||0)} · hour closes ${hm(D.hour_close)}`;
  perfTable();
- sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);sum('sfr',D.fastpush_range||{trades:0,wins:0,pnl:0});sum('sfv',D.favorite||{trades:0,wins:0,pnl:0});sum('stb',D.trend_broad||{trades:0,wins:0,pnl:0});sum('stt',D.trend_tight||{trades:0,wins:0,pnl:0});sum('smk',D.maker||{trades:0,wins:0,pnl:0});sum('sqt',D.quiet||{trades:0,wins:0,pnl:0});sum('ssq',D.squeeze||{trades:0,wins:0,pnl:0});sum('ssqm',D.squeeze_maker||{trades:0,wins:0,pnl:0});sum('smg',D.model_gap||{trades:0,wins:0,pnl:0});sum('sls',D.longshot||{trades:0,wins:0,pnl:0});sum('sbm',D.bandml||{trades:0,wins:0,pnl:0});
+ sum('sr',D.range.settled);sum('sb',D.breakdown);sum('sf',D.fastpush);sum('sfr',D.fastpush_range||{trades:0,wins:0,pnl:0});sum('sfv',D.favorite||{trades:0,wins:0,pnl:0});sum('stb',D.trend_broad||{trades:0,wins:0,pnl:0});sum('stt',D.trend_tight||{trades:0,wins:0,pnl:0});sum('smk',D.maker||{trades:0,wins:0,pnl:0});sum('sqt',D.quiet||{trades:0,wins:0,pnl:0});sum('ssq',D.squeeze||{trades:0,wins:0,pnl:0});sum('ssqm',D.squeeze_maker||{trades:0,wins:0,pnl:0});sum('smg',D.model_gap||{trades:0,wins:0,pnl:0});sum('sls',D.longshot||{trades:0,wins:0,pnl:0});sum('sbm',D.bandml||{trades:0,wins:0,pnl:0});const CB=D.coinbreak||{};sum('scbe',CB.ETH||{trades:0,wins:0,pnl:0});sum('scbs',CB.SOL||{trades:0,wins:0,pnl:0});sum('scbx',CB.XRP||{trades:0,wins:0,pnl:0});
  tables(last?last[1]:null)}
 function draw(){
  if(!D)return;CSSM={};
@@ -1390,7 +1401,7 @@ function marker(g,bot,x,y,col){g.fillStyle=col;g.strokeStyle=css('--card');g.lin
  else if(bot==='Longshot'){g.moveTo(x-5.5,y-5.5);g.lineTo(x+5.5,y+5.5);g.moveTo(x+5.5,y-5.5);g.lineTo(x-5.5,y+5.5)}
  else if(bot==='Maker'){for(let i=0;i<6;i++){const a=i*Math.PI/3;i?g.lineTo(x+6.5*Math.cos(a),y+6.5*Math.sin(a)):g.moveTo(x+6.5*Math.cos(a),y+6.5*Math.sin(a))}g.closePath()}
  else g.arc(x,y,5,0,7);g.fill();g.stroke()}
-const BOTS=[['Total','--line'],['Range','--yes'],['Breakdown','--no'],['Fast push','--fp'],['FP range','--fpr'],['Favorite','--fav'],['Trend broad','--tb'],['Trend tight','--tt'],['Maker','--mkr'],['Quiet','--qt'],['Squeeze','--sq'],['Squeeze maker','--sqm'],['Model gap','--mg'],['Correction ML','--cg'],['Longshot','--ls'],['Band ML','--bm']];
+const BOTS=[['Total','--line'],['Range','--yes'],['Breakdown','--no'],['Fast push','--fp'],['FP range','--fpr'],['Favorite','--fav'],['Trend broad','--tb'],['Trend tight','--tt'],['Maker','--mkr'],['Quiet','--qt'],['Squeeze','--sq'],['Squeeze maker','--sqm'],['Model gap','--mg'],['Correction ML','--cg'],['Longshot','--ls'],['Band ML','--bm'],['Break ETH','--cbe'],['Break SOL','--cbs'],['Break XRP','--cbx']];
 function plchart(tL,tR){
  const [g,w]=setup($('pl'),240),h=240,L=66,R=GUT,T=8,B=22;
  const X=t=>L+(t-tL)/(tR-tL)*(w-L-R);
