@@ -49,3 +49,11 @@ Trades (first qualifying minute per contract, fee included), hourly YES 90-99c m
 - 75-89c +2: s100 +3.1 / +1.5c; HAR3 +3.8 / -0.0c. 15-min: no cell positive in both periods for any input beyond what s100 already shows.
 
 Conclusion: HAR is the best volatility forecaster we have tested (use it if a forecast of the next 15-60 min RV is needed), but a better RV forecast does not improve contract pricing against Kalshi. The ranking at 1-5 min (ATR14, tau .33-.51) matters more for Brier than the level accuracy HAR provides.
+
+## ETH and XRP, stage 1 (added 2026-11-12, Michael: "run this on the xrp and eth data")
+Prices: Binance ETHUSDT / XRPUSDT 1-second klines (data.binance.vision), Nov 30 2025 - Oct 25 2026, no missing seconds. Kalshi's CF index passthrough was rate-limited to ~5 calls/min (key shared with the paper bots), so the Binance series stands in; it is a volatility proxy only, so no Brier-vs-Kalshi stage for these coins yet.
+QLIKE Sep-Oct (frozen Dec-Aug fit), next 15 / next 60 min:
+- ETH: HAR3 .417/.343, EWMA .465/.455, ATR14 .485/.483, s100 .520/.484. HAR beats s100 10/10 expanding months and beats ATR14 10/10.
+- XRP: HAR3 .332/.265, ATR14 .336/.301, EWMA .358/.327, s100 .401/.351. HAR beats s100 10/10; beats ATR14 7/10 (15 min) and 9/10 (60 min).
+Tau (15 min, Sep-Oct): ETH ATR14 .545 > HAR3 .527 > EWMA .524 > s100 .492; XRP ATR14 .574 > HAR3 .555 > EWMA .554 > s100 .526. Same pattern as BTC: HAR best on level (QLIKE), ATR14 best on ranking (tau).
+Scripts: bn/dl.sh, bn/build.py, run_coin.sh in research/har_vol/.
