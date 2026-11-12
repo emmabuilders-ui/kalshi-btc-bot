@@ -1,0 +1,3 @@
+time_utc,ticker,side,mins_left,contracts,avg_price,fee,cost,model,gap_pts,result,won,pnl
+2026-11-12 22:41:00,KXBTC-26NOV1218-B71350,YES,19,10,0.41,0.17,4.27,0.4789,5.19,yes,1,5.73
+2026-11-12 22:52:00,KXBTC-26NOV1218-B71250,YES,8,10,0.48,0.18,4.98,0.555,5.76,no,0,-4.98
