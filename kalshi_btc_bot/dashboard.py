@@ -867,6 +867,8 @@ def make_handler(dash: Dashboard, token: str):
     page = PAGE.encode()
     page5 = PAGE5.encode()
     pagem = PAGEM.encode()
+    from .dashboard_coin import COINS as CB_COINS, PAGEC, coin_data
+    pagec = {c: PAGEC.replace("__COIN__", c).encode() for c in CB_COINS}
     root = f"/{token}/"
 
     class H(BaseHTTPRequestHandler):
@@ -930,6 +932,24 @@ def make_handler(dash: Dashboard, token: str):
                 self._send(200, pagem, "text/html; charset=utf-8")
             elif self.path == root + "models/data.json":
                 self._send(200, dash.cached("models", 5, lambda: models_data(dash.logs)), "application/json")
+            elif self.path.startswith(root + "coinbreak/") and self.path[len(root) + 10:].strip("/").split("/")[0] in CB_COINS:
+                rest = self.path[len(root) + 10:].strip("/").split("/")
+                coin, tail = rest[0], rest[1:]
+                if self.path.endswith("/data.json") and tail == ["data.json"]:
+                    cd = (dash.logs.get("coinbreak") or Path("/nonexistent")) / coin
+                    self._send(200, dash.cached("coinbreak-" + coin, 5, lambda: coin_data(cd, coin)), "application/json")
+                elif tail == [] and self.path.endswith("/"):
+                    self._send(200, pagec[coin], "text/html; charset=utf-8")
+                elif tail == []:
+                    self.send_response(301)
+                    self.send_header("Location", f"{root}coinbreak/{coin}/")
+                    self.end_headers()
+                else:
+                    self._send(404, b"not found", "text/plain")
+            elif self.path in (root + "coinbreak", root + "coinbreak/"):
+                self.send_response(301)
+                self.send_header("Location", root + "coinbreak/ETH/")
+                self.end_headers()
             elif self.path == root + "models":
                 self.send_response(301)
                 self.send_header("Location", root + "models/")
@@ -1045,7 +1065,7 @@ th{font-size:12px;color:var(--mut);font-weight:600}
 .navbtn{padding:5px 12px;border:1px solid var(--grid2);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-weight:600;font-size:13px}.navbtn:hover{border-color:var(--ladder-t)}
 body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:var(--card)}
 /*FILTER_CSS*/</style></head><body><div class="wrap">
-<div class="top"><h1 class="nor5">Paper bots, live</h1><a class="nor5 navbtn" href="range5/">5-account range bot →</a><a class="nor5 navbtn" href="models/">ML model bots →</a><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
+<div class="top"><h1 class="nor5">Paper bots, live</h1><a class="nor5 navbtn" href="range5/">5-account range bot →</a><a class="nor5 navbtn" href="models/">ML model bots →</a><a class="nor5 navbtn" href="coinbreak/ETH/">ETH break bot →</a><a class="nor5 navbtn" href="coinbreak/SOL/">SOL →</a><a class="nor5 navbtn" href="coinbreak/XRP/">XRP →</a><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
 <div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button><button id="bbbtn" aria-pressed="false">Show Bollinger bands</button><button id="kcbtn" aria-pressed="false">Show Keltner channels</button><select id="bandk" aria-label="Bar length for the bands"><option value="5">5-min bars</option><option value="15">15-min bars</option><option value="60">60-min bars</option></select>
 <span class="mut" id="zinfo"></span></div>

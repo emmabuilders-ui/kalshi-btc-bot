@@ -85,3 +85,22 @@ def test_coinbreak_bot_is_in_the_performance_table(tmp_path):
     assert rows["Break + gate ETH (15-min)"]["trades"] == 1 and rows["Break + gate ETH (15-min)"]["wins"] == 1
     assert rows["Break + gate SOL (15-min)"]["wins"] == 0
     assert rows["Break + gate XRP (15-min)"]["trades"] == 0          # no folder yet: an empty row, not an error
+
+
+def test_coinbreak_pages_are_served_and_empty_logs_are_fine(tmp_path):
+    dash = FakeDash()
+    dash.logs["coinbreak"] = tmp_path                      # no coin folders yet
+    srv, base = _serve(dash)
+    try:
+        html = urllib.request.urlopen(base + "coinbreak/SOL/").read().decode()
+        assert "SOL break bot" in html and "__COIN__" not in html
+        j = json.loads(urllib.request.urlopen(base + "coinbreak/SOL/data.json").read())
+        assert j["coin"] == "SOL" and j["prices"] == [] and j["perf"]["trades"] == 0
+        assert urllib.request.urlopen(base + "coinbreak/ETH").url.endswith("/coinbreak/ETH/")
+        try:
+            urllib.request.urlopen(base + "coinbreak/DOGE/")
+            raise AssertionError("unknown coin should 404")
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+    finally:
+        srv.shutdown()
