@@ -1,2 +1,4 @@
 time_utc,coin,ticker,side,secs_left,index,strike,break_threshold,sigma_1s,model,lag_s,ask,ask_size,book,decision,contracts,avg_price
 2026-11-12 18:42:56,SOL,KXSOL15M-26NOV121345-45,YES,124,81.71,81.6927,0.005447,9.297e-05,0.5981,9,,,,skip: decision 9s after the break,,
+2026-11-12 20:27:31,SOL,KXSOL15M-26NOV121530-30,NO,149,81.39,81.4008,0.005426,8.458e-05,0.5597,5,0.57,100.0,"[[0.43, 100.0], [0.42, 478.34], [0.41, 825.0], [0.4, 540.77], [0.39, 500.0], [0.38, 500.0], [0.37, 500.0], [0.36, 500.0]]",skip: settlement chance 0.56 under ask 0.57 + fee,,
+2026-11-12 20:42:52,SOL,KXSOL15M-26NOV121545-45,YES,128,81.4,81.3943,0.005427,8.422e-05,0.5353,1,0.56,512.0,"[[0.44, 512.0], [0.43, 512.0], [0.42, 500.0], [0.41, 500.0], [0.4, 500.01], [0.39, 804.0], [0.38, 510.0], [0.37, 510.0]]",skip: settlement chance 0.54 under ask 0.56 + fee,,
