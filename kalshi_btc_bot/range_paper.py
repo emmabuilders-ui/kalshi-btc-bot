@@ -16,6 +16,9 @@ Rule (Michael, 2026-11-01; backtest Jan-Oct 2026 with the look-ahead fix):
 * Checks start at 30 minutes left (the earliest the backtest could test); the bot takes the
   first qualifying minute on each band.
 * One position per band (YES or NO, never both), held to settlement. 20 contracts.
+* Added 2026-11-04 (Michael: "do it"): skip a 75-89c entry when the band's bid-ask spread is 3c or
+  more. The loser study (strategy/loser_anatomy_summary.md) found the 3-5c-spread half of the trades
+  made nothing in both Dec-Aug and Sep-Oct; 90c+ entries are not filtered (there it cost money).
 
 Backtest (minute bid/ask snapshots, fees per 20-contract order): YES 378 trades, won 93.1% at
 89.5c, +3.0c a contract; NO 4,212 trades, won 94.0% at 92.8c, +0.7c.
@@ -46,6 +49,7 @@ N_BANDS = 14
 YES_WINDOW, NO_WINDOW = 30, 30          # start looking at 30 minutes left (earliest tested)
 LOW_FLOOR, HIGH_FLOOR = 0.745, 0.895    # 75c and 90c (prices are on a 1c grid)
 LOW_GAP, HIGH_GAP = 0.10, 0.02
+MAX_SPREAD_LOW = 0.02                   # 75-89c entries need a bid-ask spread of 2c or less
 CONTRACTS = 20
 ET = ZoneInfo("America/New_York")
 
@@ -98,6 +102,20 @@ def qualifies(model_p: float, ask: float | None) -> bool:
     if ask is None or not LOW_FLOOR <= ask < 1:
         return False
     return model_p >= ask + (LOW_GAP if ask < HIGH_FLOOR else HIGH_GAP)
+
+
+def spread_ok(ask: float | None, bid: float | None) -> bool:
+    """Spread filter for 75-89c entries: ask - bid must be 2c or less (on the 1c grid).
+
+    90c+ entries are not filtered. A missing bid counts as a wide (unknown) book for a 75-89c ask.
+    """
+    if ask is None:
+        return False
+    if ask >= HIGH_FLOOR:
+        return True
+    if bid is None:
+        return False
+    return round((ask - bid) * 100) <= round(MAX_SPREAD_LOW * 100)
 
 
 def price_limit(model_p: float) -> float:
@@ -294,8 +312,17 @@ class RangePaper:
             p_yes = self.model.p_inside(price, lo, hi, left, s100, vb)
             yb, ya = _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars"))
             no_ask = round(1 - yb, 4) if yb else None
-            for side, mp, ask, window in (("YES", p_yes, ya, YES_WINDOW), ("NO", 1 - p_yes, no_ask, NO_WINDOW)):
+            no_bid = round(1 - ya, 4) if ya else None
+            for side, mp, ask, bid, window in (("YES", p_yes, ya, yb, YES_WINDOW),
+                                               ("NO", 1 - p_yes, no_ask, no_bid, NO_WINDOW)):
                 if left > window or not qualifies(mp, ask) or tk in self.held:
+                    continue
+                if not spread_ok(ask, bid):
+                    log.info("%s %s %s: ask %.2f qualifies but spread %s is over %dc, skipped", _iso(t), side, tk,
+                             ask, f"{round((ask - bid) * 100)}c" if bid is not None else "unknown",
+                             round(MAX_SPREAD_LOW * 100))
+                    self._append("skipped.csv", {"time_utc": _iso(t), "ticker": tk, "side": side, "mins_left": left,
+                                                 "ask_snapshot": ask, "bid_snapshot": bid, "model": round(mp, 4)})
                     continue
                 self.enter(t, close, left, m, side, mp, ask, price, s100, vb)
 
