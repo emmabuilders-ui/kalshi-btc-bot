@@ -16,6 +16,7 @@
 #   kalshi-corr-gap     Correction ML model gap >= 3 pts, NO side 70-99c, 6-14 min left, no other condition (logs: paper-logs-corr-gap branch)
 #   kalshi-longshot     longshot sides at 15c or less when the normal fair value beats the ask by 8 pts, 1-14 min left (logs: paper-logs-longshot branch)
 #   kalshi-bandml       hourly range band YES, ML model gap >= 5 pts, 7-24 min left, BRTI inside the band, 10 contracts (logs: paper-logs-bandml branch)
+#   kalshi-coinbreak    break-with-gate on the ETH, SOL and XRP 15-minute markets, 60-150 s left, 20 contracts each (logs: paper-logs-coinbreak branch)
 #   kalshi-dash   live chart of all of them at http://<server-ip>:8080/<secret>/  (kbot chart prints the link)
 # No orders are ever sent. Run as root:  bash setup.sh
 # It asks for: a GitHub token (read/write to this repo), the Kalshi API key ID, and the
@@ -59,6 +60,8 @@ LS_LOGS=/opt/kalshi-logs-longshot
 LS_BRANCH="paper-logs-longshot"
 BM_LOGS=/opt/kalshi-logs-bandml
 BM_BRANCH="paper-logs-bandml"
+CB_LOGS=/opt/kalshi-logs-coinbreak
+CB_BRANCH="paper-logs-coinbreak"
 CONF=/etc/kalshi-bot
 USER_=kbot
 
@@ -442,6 +445,27 @@ git -C "$BM_LOGS" config push.default current
 chown -R "$USER_" "$BM_LOGS"
 sudo -u "$USER_" git -C "$BM_LOGS" push -q -u origin "$BM_BRANCH"
 
+echo "== Setting up the coinbreak bot log folder (pushed to the $CB_BRANCH branch every hour)"
+if [ ! -d "$CB_LOGS/.git" ]; then
+  git init -q "$CB_LOGS"
+  git -C "$CB_LOGS" remote add origin "$URL"
+  if git -C "$CB_LOGS" fetch -q origin "$CB_BRANCH" 2>/dev/null; then
+    git -C "$CB_LOGS" checkout -q -B "$CB_BRANCH" "origin/$CB_BRANCH"
+  else
+    git -C "$CB_LOGS" checkout -q --orphan "$CB_BRANCH"
+    echo "Break-with-gate ETH, SOL and XRP 15-minute market paper-trading logs from the server. No real orders." > "$CB_LOGS/README.md"
+    git -C "$CB_LOGS" add README.md
+    git -C "$CB_LOGS" -c user.name=kbot -c user.email=kbot@localhost commit -qm "start coinbreak paper logs"
+  fi
+else
+  git -C "$CB_LOGS" remote set-url origin "$URL"
+fi
+git -C "$CB_LOGS" config user.name "kalshi paper bot"
+git -C "$CB_LOGS" config user.email "kbot@localhost"
+git -C "$CB_LOGS" config push.default current
+chown -R "$USER_" "$CB_LOGS"
+sudo -u "$USER_" git -C "$CB_LOGS" push -q -u origin "$CB_BRANCH"
+
 echo "== Installing the service"
 cat > /etc/systemd/system/kalshi-paper.service <<EOF
 [Unit]
@@ -723,6 +747,24 @@ RestartSec=30
 WantedBy=multi-user.target
 EOF
 
+cat > /etc/systemd/system/kalshi-coinbreak.service <<EOF
+[Unit]
+Description=Kalshi break-with-gate ETH, SOL and XRP 15-minute market PAPER trader (no real orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=$USER_
+EnvironmentFile=$CONF/env
+WorkingDirectory=$CB_LOGS
+ExecStart=$APP/.venv/bin/python -m kalshi_btc_bot paper-coinbreak --out $CB_LOGS/coinbreak --push-logs
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 cat > /etc/systemd/system/kalshi-dash.service <<EOF
 [Unit]
 Description=Live chart of the Kalshi PAPER traders (read-only web page)
@@ -740,14 +782,14 @@ RestartSec=30
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable -q kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-dash
-systemctl restart kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-dash
+systemctl enable -q kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-coinbreak kalshi-dash
+systemctl restart kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-coinbreak kalshi-dash
 
 cat > /usr/local/bin/kbot <<'EOF'
 #!/usr/bin/env bash
 # kbot status | log | health | update | stop | start | chart | touch COIN TF BARS [TARGET]
 case "${1:-status}" in
-  status) for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-dash; do systemctl --no-pager status $u | head -3; done
+  status) for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-coinbreak kalshi-dash; do systemctl --no-pager status $u | head -3; done
           echo "-- 15-min breakdown bot"; cat /opt/kalshi-logs/breakdown/status.json 2>/dev/null
           echo; echo "-- hourly range bot"; cat /opt/kalshi-logs-range/range/status.json 2>/dev/null
           echo; echo "-- fast-push bot"; cat /opt/kalshi-logs-fastpush/fastpush/status.json 2>/dev/null
@@ -763,15 +805,16 @@ case "${1:-status}" in
           echo; echo "-- model gap bot"; cat /opt/kalshi-logs-model-gap/model-gap/status.json 2>/dev/null
           echo; echo "-- correction gap bot"; cat /opt/kalshi-logs-corr-gap/corr-gap/status.json 2>/dev/null
           echo; echo "-- longshot bot"; cat /opt/kalshi-logs-longshot/longshot/status.json 2>/dev/null
-          echo; echo "-- band ML bot"; cat /opt/kalshi-logs-bandml/bandml/status.json 2>/dev/null ;;
-  log)    for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-dash; do journalctl -u $u -n 20 --no-pager; done ;;
+          echo; echo "-- band ML bot"; cat /opt/kalshi-logs-bandml/bandml/status.json 2>/dev/null
+          for c in ETH SOL XRP; do echo; echo "-- coin break bot $c"; cat /opt/kalshi-logs-coinbreak/coinbreak/$c/status.json 2>/dev/null; done ;;
+  log)    for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-coinbreak kalshi-dash; do journalctl -u $u -n 20 --no-pager; done ;;
   update) curl -fsSL -H "Authorization: token $(cat /etc/kalshi-bot/github_token)" \
             "https://raw.githubusercontent.com/emmabuilders-ui/kalshi-btc-bot/${BRANCH:-main}/deploy/setup.sh" | bash ;;
-  stop)   systemctl stop kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-dash ;;
-  start)  systemctl start kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-dash ;;
+  stop)   systemctl stop kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-coinbreak kalshi-dash ;;
+  start)  systemctl start kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-coinbreak kalshi-dash ;;
   health) echo "-- memory (MB)"; free -m; echo; echo "-- load (1, 5, 15 min) and uptime"; uptime
           echo; echo "-- restarts per service since boot"
-          for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-dash; do printf '%-24s %s\n' "$u" "$(systemctl show -p NRestarts --value $u)"; done
+          for u in kalshi-paper kalshi-range kalshi-fastpush kalshi-range5 kalshi-fastpush-range kalshi-favorite kalshi-trend-broad kalshi-trend-tight kalshi-maker kalshi-quiet kalshi-squeeze kalshi-squeeze-maker kalshi-model-gap kalshi-corr-gap kalshi-longshot kalshi-bandml kalshi-coinbreak kalshi-dash; do printf '%-24s %s\n' "$u" "$(systemctl show -p NRestarts --value $u)"; done
           echo; echo "-- processes the kernel killed for lack of memory (last 7 days)"
           journalctl -k --since "-7d" --no-pager 2>/dev/null | grep -i "out of memory\|oom-kill" | tail -10 || true
           echo; echo "-- chart service, last 15 log lines"; journalctl -u kalshi-dash -n 15 --no-pager ;;
@@ -802,6 +845,7 @@ journalctl -u kalshi-model-gap -n 8 --no-pager || true
 journalctl -u kalshi-corr-gap -n 8 --no-pager || true
 journalctl -u kalshi-longshot -n 8 --no-pager || true
 journalctl -u kalshi-bandml -n 8 --no-pager || true
+journalctl -u kalshi-coinbreak -n 8 --no-pager || true
 echo
 echo "Done. All the paper traders and the live chart are running and restart by themselves after a reboot."
 echo "Commands:  kbot status   kbot log   kbot health   kbot update   kbot chart   kbot touch BTC 1h 6 +1%"
