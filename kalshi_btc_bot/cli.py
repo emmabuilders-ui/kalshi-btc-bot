@@ -131,6 +131,13 @@ def main(argv=None) -> None:
     bm.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     bm.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    cb = sub.add_parser("paper-coinbreak", help="paper trade the break-with-gate rule on the ETH, SOL and XRP 15-min markets (no orders are sent)")
+    cb.add_argument("--out", default="runs/coinbreak")
+    cb.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
+    cb.add_argument("--coins", default="ETH,SOL,XRP", help="comma-separated coins to trade")
+    cb.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    cb.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     d = sub.add_parser("dashboard", help="serve a live chart of the paper bots (read-only)")
     d.add_argument("--port", type=int, default=8080)
     d.add_argument("--token-file", default="/etc/kalshi-bot/dash_token", help="file holding the secret page path")
@@ -236,6 +243,10 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-bandml":
         from .bandml_paper import from_env as bm_env
         bm_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-coinbreak":
+        from .coin_break_paper import from_env as cb_env
+        cb_env(a.out, a.push_logs, a.contracts, tuple(c.strip().upper() for c in a.coins.split(","))).run(
+            a.minutes * 60 if a.minutes else None)
     elif a.cmd == "dashboard":
         from pathlib import Path
         from .dashboard import serve
