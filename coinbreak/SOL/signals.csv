@@ -1,0 +1,2 @@
+time_utc,coin,ticker,side,secs_left,index,strike,break_threshold,sigma_1s,model,lag_s,ask,ask_size,book,decision,contracts,avg_price
+2026-11-12 18:42:56,SOL,KXSOL15M-26NOV121345-45,YES,124,81.71,81.6927,0.005447,9.297e-05,0.5981,9,,,,skip: decision 9s after the break,,
