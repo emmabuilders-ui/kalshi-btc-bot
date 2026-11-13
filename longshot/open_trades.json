@@ -1,1 +1,19 @@
-[]
+[
+ {
+  "time_utc": "2026-11-13 22:24:00",
+  "ticker": "KXBTC15M-26NOV131730-30",
+  "side": "NO",
+  "level": "0.75 vol units from the strike",
+  "secs_left": 360,
+  "model_prob": 0.228,
+  "gap_pts": 9.01,
+  "contracts": 20,
+  "avg_price": 0.13,
+  "fee": 0.16,
+  "cost": 2.76,
+  "close_ts": 1794609000,
+  "result": "",
+  "won": "",
+  "pnl": ""
+ }
+]
