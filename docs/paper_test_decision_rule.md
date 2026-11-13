@@ -77,3 +77,34 @@ win % always shown beside the price. Per-trade standard deviation is about 47c, 
   the test. A condition added later from signals.csv or skips.csv counts only on data after the day it was coded.
 - skips.csv logs looks that cleared the gap but had BRTI outside the band, so that condition can be checked on new data.
 - No new scans of Mar-Oct to rescue the bot. Live trading stays locked off.
+
+## Lock-in bot (`kalshi-lockin`), added 2026-11-13
+
+Rule: 15-minute BTC market, checked at 50, 40, 30, 20 and 10 seconds before the close. Kalshi settles on the average of the
+60 BRTI prints before the close, so inside the last minute part of the result is already locked in. The bot takes the
+settlement-aware chance of each side (locked prints plus the shrinking variance of the prints still to come, settlement.py)
+and buys the side whose chance beats the ask plus the taker fee by 5 points. First qualifying check per contract, 20
+contracts at the ask, held to settlement. A check acted on more than 4 s late, a check with only an exchange proxy price,
+and a bought side with a spread over 2c are skipped and logged (signals.csv, skips.csv). Paper only.
+
+Backtest (research notes in strategy/settlement_average_test.xlsx, sheets under60_rule and under60_by_sec_conf; prices are
+Kalshi trade prints within 10 s, not live asks): Dec-Aug 498 trades, 80.5% vs 62.8c, +16.5c per contract, 9 of 9 months;
+Sep-Oct 160 trades, 76.2% vs 67.8c, +7.2c, 2 of 2 months. The 5-point margin, the 10-second quote age and the seconds grid
+were chosen after about 30 looks at this same data, so neither period is a holdout. The shipped code replayed on the
+Aug 1 - Oct 25 2026 trade prints (research/lockin/README.md): Aug 124 trades 82.3% vs 68.6c +12.5c; Sep-Oct 317 trades
+79.2% vs 71.1c +6.9c (about twice the test's trade count at the same edge).
+
+Decision, fixed before the first paper trade and not to be changed afterwards. Judge on paper fills only, by win % minus
+average price paid after the fee, with the win % always shown beside the price. Per-trade standard deviation is about 40c
+at these prices, so the standard error is roughly 40c/sqrt(n).
+
+- At 300 trades (about 4 months at 2-3 trades a day, standard error about 2.3c): edge under +1.0c retires the bot.
+- At 800 trades (standard error about 1.4c): +2.4c or more with t at least 2 may be considered for small real size, which
+  is Michael's call alone; under +1.0c retires it; in between runs on to 1,300 trades.
+- Report the edge at the logged fills and again with each fill 1c worse (the lock-in page shows both), and the split by
+  seconds left (10/20/30/40/50) and by side.
+- Day one: compare the logged lag (seconds between the check second and the decision) with the 4-second limit, and the
+  count of late or proxy-price skips. A 10-second-left decision made 3 s late is a different trade than the one tested.
+- No changes to the margin, the seconds grid, the 4-second lag limit or the spread skip during the test. A condition added
+  later from signals.csv or skips.csv counts only on data after the day it was coded.
+- No new scans of Dec-Oct to rescue the bot. Live trading stays locked off.
