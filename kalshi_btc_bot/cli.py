@@ -131,6 +131,12 @@ def main(argv=None) -> None:
     bm.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     bm.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    lk = sub.add_parser("paper-lockin", help="paper trade the last-minute lock-in rule on the 15-min BTC markets (10-50 s left, settlement-aware edge >= 5 pts; no orders are sent)")
+    lk.add_argument("--out", default="runs/lockin")
+    lk.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
+    lk.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    lk.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     cb = sub.add_parser("paper-coinbreak", help="paper trade the break-with-gate rule on the ETH, SOL and XRP 15-min markets (no orders are sent)")
     cb.add_argument("--out", default="runs/coinbreak")
     cb.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
@@ -158,6 +164,7 @@ def main(argv=None) -> None:
     d.add_argument("--longshot", default="/opt/kalshi-logs-longshot/longshot")
     d.add_argument("--bandml", default="/opt/kalshi-logs-bandml/bandml")
     d.add_argument("--coinbreak", default="/opt/kalshi-logs-coinbreak/coinbreak")
+    d.add_argument("--lockin", default="/opt/kalshi-logs-lockin/lockin")
 
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
@@ -244,6 +251,9 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-bandml":
         from .bandml_paper import from_env as bm_env
         bm_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-lockin":
+        from .lockin_paper import from_env as lk_env
+        lk_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "paper-coinbreak":
         from .coin_break_paper import from_env as cb_env
         cb_env(a.out, a.push_logs, a.contracts, tuple(c.strip().upper() for c in a.coins.split(","))).run(
@@ -257,7 +267,7 @@ def main(argv=None) -> None:
                "trend_broad": Path(a.trend_broad), "trend_tight": Path(a.trend_tight), "maker": Path(a.maker), "quiet": Path(a.quiet),
                "squeeze": Path(a.squeeze), "squeeze_maker": Path(a.squeeze_maker),
                "model_gap": Path(a.model_gap), "corr_gap": Path(a.corr_gap), "longshot": Path(a.longshot), "bandml": Path(a.bandml),
-               "coinbreak": Path(a.coinbreak)})
+               "coinbreak": Path(a.coinbreak), "lockin": Path(a.lockin)})
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)
