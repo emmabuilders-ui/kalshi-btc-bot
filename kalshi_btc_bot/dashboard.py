@@ -18,12 +18,14 @@ import threading
 import time
 import zlib
 from datetime import datetime, timezone
+from importlib import resources
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import numpy as np
 
 from .fast_push import all_levels
+from . import prob_bands
 from .late_breakdown import WARMUP, KalshiClient
 from .range_paper import N_BANDS, RangeModel, _f, band_mid, event_ticker, qualifies
 
@@ -519,6 +521,7 @@ class Dashboard:
         self.model = RangeModel()
         self.levels = LevelTracker(logs["breakdown"] / "prices", Path.home() / ".kalshi-dash-levels.json")
         self.quotes: dict = {}
+        self.pb: dict = {}            # probability bands (indicator), see prob_bands.py
         self.tape = QuoteTape(Path.home() / ".kalshi-dash-quotes.csv")
         self.strikes: dict[int, float] = {}   # 15-minute session open -> Kalshi target (strike)
         self._strikes_at = 0.0
@@ -670,6 +673,30 @@ class Dashboard:
                          "no_ok": bool(p is not None and left <= 30 and qualifies(1 - p, no_ask))})
         return {"close": close, "mins_left": left, "price": price, "at": t, "bands": rows}
 
+    def update_bands(self, now: float):
+        """Probability bands for the 15-minute and 1-hour windows now (model and Kalshi-implied)."""
+        t = int(now)
+        with self.lock:
+            last = max(self.prices) if self.prices else None
+            price = self._price_at(last) if last else None
+            closes = [self._price_at(t - 1 - 60 * (100 - k)) for k in range(101)]
+        v = self.model.vol(np.array(closes)) if price and None not in closes else None
+        if not v:
+            self.pb = {}
+            return
+        out = {"at": t, "price": round(price, 2)}
+        q = self.quotes or {}
+        hc = (t // 3600 + 1) * 3600
+        bands = [b for b in q.get("bands", []) if q.get("close") == hc]
+        out["h"] = {"close": hc, **prob_bands.window_bands(self.model, price, (hc - now) / 60, v,
+                                                           hourly_bands=bands or None)}
+        s, r = self.session, (self.q15[-1] if self.q15 else None)
+        if s and s.get("strike") and s["close_ts"] > now:
+            out["m15"] = {"close": s["close_ts"], "open": s["open_ts"],
+                          **prob_bands.window_bands(self.model, price, (s["close_ts"] - now) / 60, v, strike=float(s["strike"]),
+                                                    yes_bid=r[1] if r else None, yes_ask=r[2] if r else None)}
+        self.pb = out
+
     def update_ladders(self, now: float):
         """One Kalshi request per call at most: fill missing hours, refresh the current one every 10 min."""
         cur = (int(now) // 3600 + 1) * 3600
@@ -717,6 +744,10 @@ class Dashboard:
                 self.tape.add(now, self.q15[-1] if self.q15 else None, self.quotes)
             except Exception as e:
                 self.err = f"range prices: {e}"
+            try:
+                self.update_bands(now)
+            except Exception as e:
+                log.warning("probability bands: %s", e)
         s = self.session
         if s is None or now >= s["close_ts"]:
             try:
@@ -767,7 +798,7 @@ class Dashboard:
             "now": time.time(), "prices": pts, "error": self.err, "hour_close": hour_close,
             "range": {"open": range_positions(L["range"]),
                       "settled": settled_summary(_rows(L["range"] / "trades.csv"))},
-            "session": s, "quotes": self.quotes, "q15": self.q15,
+            "session": s, "quotes": self.quotes, "q15": self.q15, "pb": self.pb,
             "buys": session_buys(bd, s.get("ticker"), "Breakdown") + session_buys(fp, s.get("ticker"), "Fast push")
                     + session_buys(_rows(sq / "signals.csv"), s.get("ticker"), "Squeeze")
                     + session_buys(_rows(sqm / "signals.csv"), s.get("ticker"), "Squeeze maker")
@@ -868,6 +899,7 @@ def make_handler(dash: Dashboard, token: str):
     page5 = PAGE5.encode()
     pagem = PAGEM.encode()
     root = f"/{token}/"
+    cal = resources.files("kalshi_btc_bot").joinpath("data/band_calibration.json").read_bytes()
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -920,6 +952,8 @@ def make_handler(dash: Dashboard, token: str):
                     except ValueError:
                         since = 0
                 self._send(200, json.dumps(dash.tape.since(since)).encode(), "application/json")
+            elif self.path == root + "bands_cal.json":
+                self._send(200, cal, "application/json")
             elif self.path == root + "data.json":
                 self._send(200, dash.cached("data", 1, dash.data), "application/json")
             elif self.path == root + "range5/":
@@ -1047,7 +1081,7 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 /*FILTER_CSS*/</style></head><body><div class="wrap">
 <div class="top"><h1 class="nor5">Paper bots, live</h1><a class="nor5 navbtn" href="range5/">5-account range bot →</a><a class="nor5 navbtn" href="models/">ML model bots →</a><span class="px" id="px">…</span><span class="mut" id="pxraw"></span>
 <span class="mut" id="clock"></span><span class="mut" id="err"></span></div>
-<div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button><button id="bbbtn" aria-pressed="false">Show Bollinger bands</button><button id="kcbtn" aria-pressed="false">Show Keltner channels</button><select id="bandk" aria-label="Bar length for the bands"><option value="5">5-min bars</option><option value="15">15-min bars</option><option value="60">60-min bars</option></select>
+<div class="bar"><button id="zin">Zoom in</button><button id="zout">Zoom out</button><button id="back">Back 1 hour</button><button id="live">Jump to now</button><button id="lvbtn">Hide support/resistance</button><button id="tlbtn">Hide trend lines</button><button id="bbbtn" aria-pressed="false">Show Bollinger bands</button><button id="kcbtn" aria-pressed="false">Show Keltner channels</button><select id="bandk" aria-label="Bar length for the bands"><option value="5">5-min bars</option><option value="15">15-min bars</option><option value="60">60-min bars</option></select><button id="pbbtn" aria-pressed="false">Show probability bands</button><select id="pbwin" aria-label="Which window the probability bands cover"><option value="both">15-min and 1-hour</option><option value="m15">15-min only</option><option value="h">1-hour only</option></select>
 <span class="mut" id="zinfo"></span></div>
 <div class="bar" id="filters" aria-label="Show or hide each bot's trades on the chart"></div>
 <div class="card">
@@ -1072,6 +1106,8 @@ body.r5 .nor5{display:none!important}body.r5 .wrap{padding:0}body.r5{background:
 <div class="key" id="wl" style="margin:6px 0 8px;font-size:13px;color:var(--fg)"></div>
 <div class="tscroll"><table id="trades"></table></div></div>
 <div class="card scroll" style="margin-top:12px"><b>Open range positions</b><table id="pos"></table></div>
+<div class="card scroll" id="pbcard" style="margin-top:12px;display:none"><b>Probability bands now</b> <span class="mut">display only, no bot uses them · model = frozen range-model table (no retraining) · Kalshi = bands backed out of Kalshi's prices</span><table id="pbtab"></table>
+<div class="mut" style="font-size:12px;margin:8px 0 4px"><b>Calibration check</b>: how often BRTI's 60-second settlement landed inside the 50% / 80% / 95% band, %. A well-calibrated band reads about 50 / 80 / 95. Dec 2025–Oct 2026 (15-min: every window, 1-hour: every hour). Kalshi's hourly ladder has $100 bands, so its bands cannot be narrower than a band or two: too wide in the last few minutes. Kalshi 15-min bands (width fitted to the price at the strike, Aug–Oct only, last-trade price as the quote) are checked against Kalshi's own settlement values; the 'Dec–Aug' column for them is August only.</div><table id="pbcal"></table></div>
 <div class="card scroll" style="margin-top:12px"><b>15-minute contract now</b> <span class="mut" id="q15info"></span>
 <div style="display:flex;flex-wrap:wrap;gap:8px 28px;align-items:center;margin:8px 0"><div><div class="mut">YES bid / ask</div><div class="big" id="q15y"></div></div><div><div class="mut">NO bid / ask</div><div class="big" id="q15n"></div></div><div><div class="mut">Model YES / NO</div><div class="big" id="q15m"></div></div>
 <div style="flex:1;min-width:260px"><canvas id="q15c" style="width:100%;height:130px"></canvas>
@@ -1131,7 +1167,8 @@ const tsOf=s=>Date.parse(s.replace(' ','T')+'Z')/1000;
 const sc=$('sc');
 function pps(){return ZOOMS[zi]/900}
 function range(){const first=Math.min(P.length?P[0][0]:D.now,...(H?H.range.map(r=>r.close-3600):[]));
- return [Math.floor(first/900)*900,Math.ceil(D.now/900)*900+300]}
+ const pe=PBON&&D.pb?Math.max(0,...pbWins().map(w=>w.close)):0;
+ return [Math.floor(first/900)*900,Math.max(Math.ceil(D.now/900)*900+300,pe+120)]}
 function sum(id,s){$(id).textContent=s.trades?`${s.wins}/${s.trades} won, ${money(s.pnl)}`:'no trades yet'}
 // trailing 60-second average of BRTI at each price point (Kalshi settles on the average of the 60 seconds before the close)
 function avg60(tL,tR){let a=0;while(a<P.length&&P[a][0]<tL-120)a++;const out=[];let j=a,sum=0,n=0;
@@ -1267,6 +1304,7 @@ function draw(){
  const rng=(H?H.range:[]).filter(r=>r.close>=tL&&r.close-3600<=tR&&r.lo!=null&&!isHid(fkey(r)));
  let ys=vis.map(p=>p[1]);if(!ys.length&&last)ys=[last[1]];
  for(const s of ses)ys.push(s[1]);for(const r of rng)ys.push(r.lo,r.hi);
+ if(PBON)for(const w of pbWins()){for(const m of [w.model,w.kalshi])if(m)for(const k of ['0.1','0.9'])for(const v of m.q[k])if(v!=null)ys.push(v)}
  let lo=Math.min(...ys),hi=Math.max(...ys);const pad=(hi-lo)*0.06+5;lo-=pad;hi+=pad;
  const Y=v=>T+(hi-v)/(hi-lo)*(h-T-B);
  timegrid(g,X,tL,tR,T,B,h,true);
@@ -1344,6 +1382,7 @@ function draw(){
     const sc=over(x,yy,tw,th);if(!best||sc<best[2])best=[x,yy,sc];if(sc===0)break}if(best[2]===0)break}
   return drawBox(best[0],best[1],tw,th,txt,col)};
  if(BBON||KCON)drawBands(g,X,Y,tL,tR,L,w,R);
+ if(PBON)drawPB(g,X,Y,L,w,R);
  const full=ZOOMS[zi]>=128,short0=ZOOMS[zi]>=32;
  for(const r of rng){const y=at(r.t)??(r.lo+r.hi)/2;const x=X(r.t),yd=Y(y),col=R5?acol(r,'dark'):css(st[r.status]),mid=Y((r.lo+r.hi)/2),short=short0&&x>=L&&x<=w-R;
   const res=r.status==='open'?'OPEN':r.status.toUpperCase()+' '+money(r.pnl),ac=R5?`#${r.acct} `:'';
@@ -1490,6 +1529,49 @@ const bandSave=()=>{try{localStorage.setItem('bbOn',BBON?'1':'0');localStorage.s
 $('bbbtn').onclick=()=>{BBON=!BBON;bandSave();syncBandBtns();draw()};
 $('kcbtn').onclick=()=>{KCON=!KCON;bandSave();syncBandBtns();draw()};
 $('bandk').onchange=e=>{BANDK=+e.target.value;bandSave();draw()};
+
+// Probability bands (display only): fans from the live price to the close of the 15-min and 1-hour windows.
+// Blue shading = model (50/80/95 %, darker = more likely); orange lines = bands implied by Kalshi's own prices (solid 50, dashed 80, dotted 95).
+let PBON=false,PBWIN='both',PBCAL=null;
+try{PBON=localStorage.getItem('pbOn')==='1';PBWIN=localStorage.getItem('pbWin')||'both'}catch(e){}
+function pbWins(){const o=[];if(!D||!D.pb)return o;const a=D.pb;
+ if(a.m15&&PBWIN!=='h')o.push({...a.m15,at:a.at,name:'15-min'});if(a.h&&PBWIN!=='m15')o.push({...a.h,at:a.at,name:'1-hour'});return o}
+function drawPB(g,X,Y,L,w,R){
+ g.save();g.beginPath();g.rect(L,0,w-L-R,4000);g.clip();
+ for(const W of pbWins()){const ts=[W.at,...W.model.h.map(h=>W.at+h*60)];
+  const lines=(m,k)=>[W.price,...m.q[k]];
+  for(const [lv,a,b,al] of [[95,'0.025','0.975',.07],[80,'0.1','0.9',.09],[50,'0.25','0.75',.13]]){
+   const lo=lines(W.model,a),hi=lines(W.model,b);g.fillStyle=css('--strike');g.globalAlpha=al;g.beginPath();
+   ts.forEach((t,i)=>{i?g.lineTo(X(t),Y(hi[i])):g.moveTo(X(t),Y(hi[i]))});for(let i=ts.length-1;i>=0;i--)g.lineTo(X(ts[i]),Y(lo[i]));g.closePath();g.fill()}
+  g.globalAlpha=1;g.strokeStyle=css('--strike');g.lineWidth=1;g.setLineDash([]);
+  for(const k of ['0.025','0.975']){g.globalAlpha=.55;g.beginPath();lines(W.model,k).forEach((v,i)=>{i?g.lineTo(X(ts[i]),Y(v)):g.moveTo(X(ts[i]),Y(v))});g.stroke()}
+  g.globalAlpha=1;
+  if(W.kalshi){g.strokeStyle=css('--fpr');
+   for(const [ks,dash,lw] of [[['0.25','0.75'],[],1.8],[['0.1','0.9'],[6,3],1.6],[['0.025','0.975'],[2,3],1.4]]){g.setLineDash(dash);g.lineWidth=lw;
+    for(const k of ks){g.beginPath();let pen=false;lines(W.kalshi,k).forEach((v,i)=>{if(v==null){pen=false;return}const x=X(ts[i]),y=Y(v);pen?g.lineTo(x,y):g.moveTo(x,y);pen=true});g.stroke()}}
+   g.setLineDash([])}
+  // window name at the close, above the top of the 80 % band
+  const xe=X(ts[ts.length-1]),ye=Y(W.model.q['0.9'][W.model.q['0.9'].length-1]);g.fillStyle=css('--strike');g.font='10px system-ui';g.fillText(W.name,Math.min(xe-34,w-R-40),ye-4)}
+ g.restore()}
+const pbR=a=>a==null||a.some(v=>v==null)?'<span class="mut">–</span>':usd(a[0])+' – '+usd(a[1]);
+function pbTable(){const el=$('pbtab');if(!el)return;const Ws=pbWins();
+ if(!Ws.length){el.innerHTML='<tr><td class="mut">Waiting for prices (the model needs 100 minutes of BRTI).</td></tr>';return}
+ const rows=[];for(const W of Ws){const e=W.model_end,k=W.kalshi_end;const pair=(o,a,b)=>o?[o[a],o[b]]:null;
+  const wd=(o)=>o&&o['0.1']!=null&&o['0.9']!=null?o['0.9']-o['0.1']:null;const rt=wd(k)&&wd(e)?(wd(k)/wd(e)).toFixed(2)+'×':'–';
+  rows.push(`<tr><td><b>${W.name}</b></td><td>${hm(W.close)} ET · ${W.left.toFixed(1)} min</td><td>model</td><td>${pbR(pair(e,'0.25','0.75'))}</td><td>${pbR(pair(e,'0.1','0.9'))}</td><td>${pbR(pair(e,'0.025','0.975'))}</td><td rowspan="2">${rt}</td><td rowspan="2">${W.sd_to_strike!=null?W.sd_to_strike.toFixed(2)+' SD':'–'}</td></tr>`);
+  rows.push(`<tr><td></td><td class="mut">${W.kalshi_how==='ladder'?'from the band ladder':W.kalshi_how==='strike'?'width fitted to the strike price':'no Kalshi reading'}</td><td>Kalshi</td><td>${pbR(pair(k,'0.25','0.75'))}</td><td>${pbR(pair(k,'0.1','0.9'))}</td><td>${pbR(pair(k,'0.025','0.975'))}</td></tr>`)}
+ el.innerHTML='<tr><th>Window</th><th>Closes · left</th><th>Source</th><th>50% band</th><th>80% band</th><th>95% band</th><th>Kalshi / model width (80%)</th><th>Strike distance</th></tr>'+rows.join('')}
+async function pbCal(){if(PBCAL)return;try{PBCAL=await get('bands_cal.json',8000)}catch(e){return}
+ const mins=[1,2,3,5,7,10,14,15,20,30],pick=(c,per,m)=>{const r=c&&c[per]&&c[per][m];return r?`${r[0]} / ${r[1]} / ${r[2]}`:'–'};
+ const keys=[['1hour|model','Model, 1 hour'],['1hour|kalshi','Kalshi ladder, 1 hour'],['15min|model','Model, 15 min'],['15min|kalshi','Kalshi strike, 15 min']];
+ let h='<tr><th>Min left</th>'+keys.map(([k,n])=>`<th>${n}<br><span class="mut">Dec–Aug</span></th><th>${n}<br><span class="mut">Sep–Oct</span></th>`).join('')+'</tr>';
+ for(const m of mins)h+=`<tr><td>${m}</td>`+keys.map(([k])=>`<td>${pick(PBCAL[k],'Dec-Aug',m)}</td><td>${pick(PBCAL[k],'Sep-Oct',m)}</td>`).join('')+'</tr>';
+ $('pbcal').innerHTML=h}
+function syncPB(){const b=$('pbbtn');b.textContent=(PBON?'Hide':'Show')+' probability bands';b.setAttribute('aria-pressed',PBON);$('pbwin').value=PBWIN;$('pbwin').style.display=PBON?'':'none';$('pbcard').style.display=PBON?'':'none';if(PBON)pbCal()}
+const pbSave=()=>{try{localStorage.setItem('pbOn',PBON?'1':'0');localStorage.setItem('pbWin',PBWIN)}catch(e){}};
+$('pbbtn').onclick=()=>{PBON=!PBON;pbSave();syncPB();draw()};
+$('pbwin').onchange=e=>{PBWIN=e.target.value;pbSave();draw()};
+syncPB();
 syncBandBtns();
 let TSIG=-1,TROWS=[],HL=null,hlTimer=0;
 // click a row in the trades table: bring that trade's marker into view on the chart and ring it for a few seconds
@@ -1523,7 +1605,7 @@ function trades(){if(!H||HV===TSIG)return;TSIG=HV;
   rows+=`<tr class="trrow" data-i="${i}" title="Click to show this trade on the chart"><td>${d} ${hm(r.t)}</td><td>${mk(r)} ${r.bot}</td><td>${r.mkt}</td><td>${r.side||''}</td><td>${r.n||''}</td><td>${r.price!=null?cents(r.price):'–'}</td><td>${r.model!=null?cents(r.model):'<span class="mut">–</span>'}</td><td>${res}</td><td>${r.amodel!=null?cents(r.amodel):'–'}</td><td>${r.aprice!=null?cents(r.aprice):'–'}</td><td>${r.awin!=null?(r.awin*100).toFixed(1)+'%':'–'}</td><td>${r.cost!=null?'$'+r.cost.toFixed(2):'–'}</td><td>${r.spent!=null?'$'+r.spent.toFixed(2):'–'}</td><td>${pc(r.pnl)}</td><td>${pc(r.cum)}</td><td>${pc(r.avg)}</td></tr>`}
  if(!R.length)rows+='<tr><td colspan="16" class="mut">No trades yet.</td></tr>';
  TROWS=R;$('trades').innerHTML=rows}
-function tables(px){q15();trades();
+function tables(px){q15();trades();if(PBON)pbTable();
  let rows='<tr><th>Bought (ET)</th><th>Side</th><th>Band</th><th>Contracts</th><th>Paid</th><th>Model</th><th>Now</th><th>Closes</th></tr>';
  const ps=D.range.open.filter(p=>p.lo!=null);
  for(const p of ps){if(px==null)break;const inside=px>=p.lo&&px<=p.hi,win=(p.side==='NO')!==inside;
