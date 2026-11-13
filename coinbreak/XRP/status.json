@@ -1,10 +1,10 @@
 {
- "updated_utc": "2026-11-13T09:26:39+00:00",
+ "updated_utc": "2026-11-13T10:26:12+00:00",
  "coin": "XRP",
  "settled_trades": 3,
  "wins": 2,
  "pnl_dollars": 8.77,
- "session": "KXXRP15M-26NOV130430-30",
- "max_mem_mb": 60,
+ "session": "KXXRP15M-26NOV130530-30",
+ "max_mem_mb": 56,
  "note": ""
 }
