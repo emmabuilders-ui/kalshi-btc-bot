@@ -1,0 +1,3 @@
+time_utc,coin,ticker,side,secs_left,contracts,avg_price,fee,cost,model,result,won,pnl
+2026-11-13 14:28:01,SOL,KXSOL15M-26NOV130930-30,NO,119,20,0.45,0.35,9.35,0.5688,yes,0,-9.35
+2026-11-13 14:43:47,SOL,KXSOL15M-26NOV130945-45,NO,73,20,0.42,0.35,8.75,0.5704,no,1,11.25
