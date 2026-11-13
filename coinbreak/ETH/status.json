@@ -1,10 +1,10 @@
 {
- "updated_utc": "2026-11-13T19:26:24+00:00",
+ "updated_utc": "2026-11-13T20:26:43+00:00",
  "coin": "ETH",
  "settled_trades": 1,
  "wins": 1,
  "pnl_dollars": 9.65,
- "session": "KXETH15M-26NOV131430-30",
+ "session": "KXETH15M-26NOV131530-30",
  "max_mem_mb": 58,
  "note": ""
 }
