@@ -1,10 +1,10 @@
 {
- "updated_utc": "2026-11-13T00:06:20+00:00",
+ "updated_utc": "2026-11-13T01:06:30+00:00",
  "settled": {
   "YES": {
-   "trades": 12,
-   "wins": 9,
-   "pnl_dollars": -14.49
+   "trades": 13,
+   "wins": 10,
+   "pnl_dollars": -4.64
   }
  },
  "open_positions": 0,
