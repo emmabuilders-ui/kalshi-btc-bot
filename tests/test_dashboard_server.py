@@ -117,4 +117,11 @@ def test_models_page_has_a_results_row_per_bot(tmp_path):
         w.writerow(["2026-11-12 18:00:00", "T1", "NO", 20, 0.80, 16.4, 1, 3.6])
     out = models_data({"model_gap": d})
     assert out["perf"][0]["bot"] == "Direct ML" and out["perf"][0]["trades"] == 1 and out["perf"][0]["win_pct"] == 100.0
+    b = tmp_path / "bm"
+    b.mkdir()
+    (b / "trades.csv").write_text("time_utc,ticker,side,mins_left,contracts,avg_price,fee,cost,model,gap_pts,result,won,pnl\n"
+                                  "2026-11-12 18:00:00,T1,YES,10,10,0.5,0.2,5.2,0.6,8,yes,1,4.8\n")
+    both = models_data({"model_gap": d, "bandml": b, "longshot": tmp_path / "none"})
+    band = [t for t in both["trades"] if t["bot"] == "Band ML"][0]
+    assert band["secs_left"] == 600 and band["model"] == 0.6 and len(both["perf"]) == 3
     assert "id=\"perf\"" in PAGEM and "ftWatch" in PAGEM
