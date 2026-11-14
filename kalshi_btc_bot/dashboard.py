@@ -218,6 +218,9 @@ def _hour_end(key: str) -> int:
     return int(d.timestamp()) + 3600
 
 
+DAILY_MARKET_BOTS = {"5 PM range"}   # bots that trade Kalshi's 5 PM daily/weekly market on purpose (PR #42)
+
+
 def history_events(L: dict[str, Path]) -> dict:
     """Everything the bots did, for the full-history chart."""
     edges = {r["ticker"]: (_num(r.get("floor")), _num(r.get("cap"))) for r in _rows(L["range"] / "signals.csv")}
@@ -241,8 +244,9 @@ def history_events(L: dict[str, Path]) -> dict:
     rng += favorite_events(L.get("maker"), "Maker")
     rng += favorite_events(L.get("quiet"), "Quiet")
     rng += favorite_events(L.get("bandml"), "Band ML")
-    for e in rng:  # trades made in Kalshi's daily/weekly 5 PM market before the hourly-only filter existed
-        e["daily"] = is_daily_close(e.get("close"))
+    for e in rng:  # trades made in Kalshi's daily/weekly 5 PM market before the hourly-only filter existed;
+        # a bot built to trade that market on purpose (name in DAILY_MARKET_BOTS) is not flagged
+        e["daily"] = is_daily_close(e.get("close")) and e.get("bot") not in DAILY_MARKET_BOTS
     sessions = []
     for r in _rows(L["breakdown"] / "sessions.csv"):
         k = _num(r.get("strike"))
