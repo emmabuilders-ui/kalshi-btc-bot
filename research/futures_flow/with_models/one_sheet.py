@@ -25,17 +25,18 @@ med = dm.groupby(['Product', 'period', 'band', 'min_left', 'Side', 'flow']).dm.m
 g = X2.groupby(['Product', 'period', 'band', 'min_left', 'Side', 'flow']).agg(n=('edge', 'size'), px=('price', 'mean'), win=('won', 'mean'), edge=('edge', 'mean')).join(med).reset_index()
 g['win'] = 100 * g.win
 g['Price bucket'] = g.band.astype(str) + '-' + (g.band + 9).astype(str) + 'c'
-g['Avg edge - median edge'] = g.edge - g['Median edge']
+g['Win % - price'] = g.win - g.px
+g['Abs(avg edge - median edge)'] = (g.edge - g['Median edge']).abs()
 g = g.rename(columns={'period': 'Period', 'min_left': 'Min left', 'flow': 'Flow', 'n': 'n trades', 'px': 'Avg price', 'win': 'Win %', 'edge': 'Avg edge'})
 g['Flow'] = pd.Categorical(g.Flow, ['All', 'Against', 'Agree', 'Neutral'], ordered=True)
 g['Period'] = pd.Categorical(g.Period, ['Dec-Aug', 'Sep-Oct'], ordered=True); g['Product'] = pd.Categorical(g.Product, ['15-min', 'Hourly'], ordered=True)
 g = g.sort_values(['Product', 'Period', 'band', 'Min left', 'Side', 'Flow'], ascending=[True, True, True, False, False, True])
-cols = ['Product', 'Period', 'Price bucket', 'Min left', 'Side', 'Flow', 'n trades', 'Avg price', 'Win %', 'Avg edge', 'Median edge', 'Avg edge - median edge']
+cols = ['Product', 'Period', 'Price bucket', 'Min left', 'Side', 'Flow', 'n trades', 'Avg price', 'Win %', 'Win % - price', 'Avg edge', 'Median edge', 'Abs(avg edge - median edge)']
 g = g[cols]
-for c in ['Avg price', 'Win %', 'Avg edge', 'Median edge', 'Avg edge - median edge']: g[c] = g[c].round(2)
+for c in ['Avg price', 'Win %', 'Win % - price', 'Avg edge', 'Median edge', 'Abs(avg edge - median edge)']: g[c] = g[c].round(2)
 readme = pd.DataFrame({'note': ['One row per price bucket x minutes left x side x flow x period. Every Kalshi snapshot, bought at the ask. Edge = win % - price - Kalshi fee, cents per contract.',
  'Flow: Agree = last-3-minute CME futures flow z > +0.5 for YES / < -0.5 for NO; Against = opposite; Neutral = |z| <= 0.5 or CME closed/thin (no flow reading); All = every snapshot.',
- 'Median edge = median over days of that cell\'s daily average edge (a per-trade median would just be a win or a loss). Last column = avg edge - median edge.',
+ 'Median edge = median over days of that cell\'s daily average edge (a per-trade median would just be a win or a loss). Win % - price = win rate minus average price paid (before fee), points. Last column = absolute value of (avg edge - median edge).',
  'Periods: Dec-Aug (Dec 10 2025 - Aug 31 2026), Sep-Oct (Sep 1 - Oct 26 2026). Filter with the header dropdowns.']})
 with pd.ExcelWriter(W, engine='openpyxl') as xw:
     g.to_excel(xw, sheet_name='Edge table', index=False); readme.to_excel(xw, sheet_name='README', index=False)
