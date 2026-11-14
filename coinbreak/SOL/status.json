@@ -1,10 +1,10 @@
 {
- "updated_utc": "2026-11-14T19:36:47+00:00",
+ "updated_utc": "2026-11-14T20:28:27+00:00",
  "coin": "SOL",
  "settled_trades": 5,
  "wins": 2,
  "pnl_dollars": -9.95,
  "session": null,
- "max_mem_mb": 53,
+ "max_mem_mb": 58,
  "note": ""
 }
