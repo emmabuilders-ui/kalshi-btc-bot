@@ -33,7 +33,17 @@ def test_perf_row():
     r = perf_row("X", rows)
     assert (r["trades"], r["wins"], r["win_pct"], r["avg_price"], r["gap"]) == (2, 1, 50.0, 75.0, -25.0)
     assert abs(r["break_even"] - 76.25) <= 0.06 and abs(r["ev"] + 26.25) <= 0.06 and r["pnl"] == -10.5
-    assert perf_row("Y", []) == {"bot": "Y", "trades": 0}
+    assert perf_row("Y", []) == {"bot": "Y", "trades": 0, "daily": 0}
+
+
+def test_perf_row_leaves_out_the_5pm_daily_market_trades():
+    from kalshi_btc_bot.dashboard import perf_row
+    rows = [{"ticker": "KXBTC-26NOV1316-B66250", "avg_price": "0.80", "contracts": "20", "cost": "16.20", "won": "1", "pnl": "3.80"},
+            {"ticker": "KXBTC-26NOV1317-B68250", "avg_price": "0.91", "contracts": "82", "cost": "75.10", "won": "1", "pnl": "6.90"}]
+    r = perf_row("X", rows)
+    assert (r["trades"], r["wins"], r["daily"], r["pnl"]) == (1, 1, 1, 3.8)
+    r = perf_row("5 PM range", rows)   # a bot built for that market keeps all its trades
+    assert (r["trades"], r["daily"], r["pnl"]) == (2, 0, 10.7)
 
 
 def test_damaged_gzip_member_yields_what_came_before_it(tmp_path):

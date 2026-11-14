@@ -78,6 +78,30 @@ win % always shown beside the price. Per-trade standard deviation is about 47c, 
 - skips.csv logs looks that cleared the gap but had BRTI outside the band, so that condition can be checked on new data.
 - No new scans of Mar-Oct to rescue the bot. Live trading stays locked off.
 
+## 5 PM range bot (`kalshi-fivepm`), added 2026-11-14
+
+Market: Kalshi's daily "BTC price range at 5pm ET" market ($250 bands, listed the day before) and, on Fridays, the weekly one
+($500 bands, listed a week before). They sit in the hourly series' 5 PM slot (event KXBTC-yyMONdd17), so the hourly-band bots
+traded them by accident until PR #41; those accidental trades (29, 28 won, +$64) are tagged on the dashboard and not counted
+anywhere. This bot trades the slot on purpose, on its own count.
+
+Rule: the range bot's YES rule, unchanged. From 30 minutes left, the 14 "between" bands nearest BRTI 30 minutes before the
+close; buy YES at 75-89c when the frozen range model is 10+ points above the ask (spread 2c or less) or at 90-99c when it is
+2+ points above; walk the book up to model minus the gap; 20 contracts; one position per band; held to settlement. No NO side.
+
+Research (strategy/five_pm_range/, Dec 2025 - Oct 2026, 284 daily + 46 weekly events, full-life 1-minute quotes): Kalshi's
+prices on these markets are as good as on the hourly bands (every taker cell loses 1-4c after fees on both sides; a
+realized-vol model loses to Kalshi on Brier 9 of 11 months; maker fills at the bid also lose). Replaying the range bot's YES
+rule on the last 30 minutes of these events was the only rule positive in both periods: Dec-Aug 60 trades, 95.0% won at
+90.3c, +4.1c; Sep-Oct 18 trades, 94.4% at 90.0c, +3.8c. The NO rule (-2.0c) and the 75-89c "model >= ask" account (-4.6c)
+lost in Sep-Oct, so they are left out. Expect about 2 trades a week, so the sample grows slowly.
+
+Decision, fixed before the first paper trade; judge on paper fills only, win % minus average price after the fee, with the
+win % always shown beside the price:
+- Under +1.0c at 300 trades retires it. At or above +2.4c at 800 trades it may be proposed for a small real size, which is
+  Michael's call alone. In between it runs on.
+- No changes to the gaps, the 75c floor, the window or the side during the test. Live trading stays locked off.
+
 ## Lock-in bot (`kalshi-lockin`), added 2026-11-13
 
 Rule: 15-minute BTC market, checked at 50, 40, 30, 20 and 10 seconds before the close. Kalshi settles on the average of the

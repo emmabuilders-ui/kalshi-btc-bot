@@ -109,3 +109,20 @@ def test_settle_writes_trades_and_clears_open(tmp_path, monkeypatch):
     row = next(csv.DictReader((tmp_path / "ETH" / "trades.csv").open()))
     assert row["won"] == "1" and float(row["pnl"]) > 0
     assert json.loads((tmp_path / "ETH" / "status.json").read_text())["settled_trades"] == 1
+
+
+def test_prices_and_sessions_are_logged_for_the_coin_page(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from kalshi_btc_bot.dashboard_coin import coin_data
+    bot, coin = make(tmp_path, monkeypatch, Stub(no_bids=[[0.40, 50]]))
+    now = CLOSE - 130
+    bot._log_prices(coin, now)
+    bot._append(coin, "sessions.csv", {"ticker": "KXETH15M-TEST", "open_utc": cb._iso(CLOSE - 900),
+                                       "close_utc": cb._iso(CLOSE), "strike": K})
+    coin.last_flush = 0
+    bot._log_prices(coin, now + 100)              # a second flush must not duplicate seconds
+    h = datetime.fromtimestamp(CLOSE - 10, timezone.utc).strftime("%Y-%m-%d/%H")
+    assert (tmp_path / "ETH" / "prices" / f"{h}.csv.gz").exists()
+    d = coin_data(tmp_path / "ETH", "ETH", now=CLOSE)
+    assert len(d["prices"]) == len({p[0] for p in d["prices"]}) and d["prices"][-1][0] == CLOSE - 1
+    assert d["sessions"][0]["strike"] == K and d["perf"]["trades"] == 0
