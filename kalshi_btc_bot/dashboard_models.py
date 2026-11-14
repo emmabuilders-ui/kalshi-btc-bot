@@ -12,13 +12,17 @@ from .dashboard import FILTER_CSS, FILTER_JS, _json, _num, _rows, perf_row
 MODEL_BOTS = {
     "model_gap": ("Direct ML", "NO 70–99¢, model ≥ 3 pts over ask + fee, 6–14 min left, cushion or breakout"),
     "corr_gap": ("Correction ML", "NO 70–99¢, model ≥ 3 pts over ask + fee, 6–14 min left, no other condition"),
+    "bandml": ("Band ML", "YES on hourly range bands, 7–24 min left, BTC inside the band, model ≥ 5 pts over ask + fee, 10 contracts"),
+    "longshot": ("Longshot", "near-strike fair value at least 8¢ over price + fee, price 15¢ or less"),
 }
 CHECK_ROWS = 60
 
 
 def _trade(r: dict, bot: str) -> dict:
     return {"bot": bot, "time_utc": r.get("time_utc"), "ticker": r.get("ticker"), "side": r.get("side"),
-            "secs_left": _num(r.get("secs_left")), "model": _num(r.get("model_prob")), "gap": _num(r.get("gap_pts")),
+            "secs_left": _num(r.get("secs_left")) if r.get("secs_left") not in (None, "") else (
+                (_num(r.get("mins_left")) or 0) * 60 if r.get("mins_left") not in (None, "") else None),
+            "model": _num(r.get("model_prob") if r.get("model_prob") not in (None, "") else r.get("model")), "gap": _num(r.get("gap_pts")),
             "contracts": _num(r.get("contracts")), "price": _num(r.get("avg_price")), "cost": _num(r.get("cost")),
             "won": str(r.get("won")) == "1", "pnl": _num(r.get("pnl")), "level": r.get("level")}
 
@@ -41,7 +45,7 @@ def models_data(logs: dict[str, Path]) -> dict:
         perf.append(perf_row(name, _rows(d / "trades.csv")))
         trades += tr
         opened += op
-        for r in sig[-CHECK_ROWS:]:
+        for r in (sig[-CHECK_ROWS:] if key in ("model_gap", "corr_gap") else []):   # the other bots log different columns
             checks.append({"bot": name, "time_utc": r.get("time_utc"), "min_left": _num(r.get("min_left")),
                            "p_yes": _num(r.get("model_p_yes")), "yes_ask": _num(r.get("yes_ask")), "no_ask": _num(r.get("no_ask")),
                            "yes_gap": _num(r.get("yes_gap_pts")), "no_gap": _num(r.get("no_gap_pts")),
@@ -54,11 +58,11 @@ PAGEM = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>ML Model Bots</title>
 <style>
 :root{--bg:#f9f9f7;--card:#fcfcfb;--fg:#0b0b0b;--mut:#52514e;--grid:#e6e6e3;--grid2:#c9c8c2;
---b0:#9c2f6e;--b1:#2a78d6;--all:#0b0b0b;--win:#0ca30c;--lose:#d03b3b;--open:#c98500}
+--b0:#9c2f6e;--b1:#2a78d6;--b2:#5d4037;--b3:#0e7490;--all:#0b0b0b;--win:#0ca30c;--lose:#d03b3b;--open:#c98500}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d0d0d;--card:#1a1a19;--fg:#f0efec;--mut:#c3c2b7;--grid:#2a2a28;--grid2:#45443f;
---b0:#e88ac0;--b1:#3987e5;--all:#f0efec;--win:#2fbf2f;--lose:#e66767;--open:#eda100;color-scheme:dark}}
+--b0:#e88ac0;--b1:#3987e5;--b2:#bcaaa4;--b3:#5fd0e6;--all:#f0efec;--win:#2fbf2f;--lose:#e66767;--open:#eda100;color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#0d0d0d;--card:#1a1a19;--fg:#f0efec;--mut:#c3c2b7;--grid:#2a2a28;--grid2:#45443f;
---b0:#e88ac0;--b1:#3987e5;--all:#f0efec;--win:#2fbf2f;--lose:#e66767;--open:#eda100;color-scheme:dark}
+--b0:#e88ac0;--b1:#3987e5;--b2:#bcaaa4;--b3:#5fd0e6;--all:#f0efec;--win:#2fbf2f;--lose:#e66767;--open:#eda100;color-scheme:dark}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .wrap{max-width:1100px;margin:0 auto;padding:16px}
 h1{font-size:18px;margin:0}h2{font-size:15px;margin:0 0 8px}

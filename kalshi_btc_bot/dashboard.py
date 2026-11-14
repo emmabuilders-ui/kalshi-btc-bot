@@ -1275,7 +1275,7 @@ for(const cv of [$('c'),$('pl')]){let drag=null;
  cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);cv.addEventListener('lostpointercapture',()=>{drag=null;cv.classList.remove('drag')})}
 // Trade filter: one button per bot (per account on the 5-account page) to show or hide its bands, markers and labels
 const FBOTS=[['Range','●','--yes'],['Breakdown','▲','--no'],['Fast push','■','--fp'],['FP range','◆','--fpr'],['Favorite','▼','--fav'],['Trend broad','★','--tb'],['Trend tight','✦','--tt'],['Maker','⬢','--mkr'],['Quiet','✚','--qt'],['Squeeze','⬟','--sq'],['Squeeze maker','⬡','--sqm'],['Model gap','◈','--mg'],['Correction ML','◇','--cg'],['Longshot','✖','--ls'],['Band ML','▣','--bm'],['5 PM range','⬥','--fp5'],['Lock-in','⧗','--lk']];
-const MLBOTS=['Model gap','Correction ML'],LKBOTS=['Lock-in'];
+const MLBOTS=['Model gap','Correction ML','Longshot','Band ML'],LKBOTS=['Lock-in'];
 const ONLY=MV?MLBOTS:LV?LKBOTS:null,DEFHID=()=>ONLY?FBOTS.map(f=>f[0]).filter(k=>!ONLY.includes(k)):[];
 const HKEY=R5?'hiddenAccounts':MV?'hiddenBotsModels':LV?'hiddenBotsLockin':'hiddenBots';let HID=new Set();
 try{const sv=localStorage.getItem(HKEY);HID=new Set(sv?JSON.parse(sv).map(String):DEFHID())}catch(e){HID=new Set(DEFHID())}
