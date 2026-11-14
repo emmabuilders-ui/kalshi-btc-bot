@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from .dashboard import FILTER_CSS, FILTER_JS, _json, _num, _rows
+from .range_paper import is_daily_event
 
 
 def range5_data(d: Path, prices: list) -> dict:
@@ -23,7 +24,8 @@ def range5_data(d: Path, prices: list) -> dict:
         trades.append({"time_utc": r.get("time_utc"), "account": int(r.get("account") or 0), "ticker": r.get("ticker"),
                        "side": r.get("side"), "contracts": _num(r.get("contracts")), "price": _num(r.get("avg_price")),
                        "cost": _num(r.get("cost")), "model": _num(r.get("model")), "won": str(r.get("won")) == "1",
-                       "pnl": _num(r.get("pnl")), "mins_left": _num(r.get("mins_left")), "lo": lo, "hi": hi})
+                       "pnl": _num(r.get("pnl")), "mins_left": _num(r.get("mins_left")), "lo": lo, "hi": hi,
+                       "daily": is_daily_event(r.get("ticker"))})
     misses = sum(1 for r in sig if str(r.get("filled")) in ("0", ""))
     return {"now": time.time(), "prices": prices, "status": status, "open": held, "trades": trades,
             "signals": len(sig), "unfilled": misses}
@@ -86,7 +88,7 @@ function setup(c){const r=c.getBoundingClientRect(),d=window.devicePixelRatio||1
 let D=null, plSeries=[], plGeom=null;
 function drawPL(){
   const c=document.getElementById('pl'),[x,W,H]=setup(c);const L=56,R=16,T=10,B=26;
-  const tr=(D.trades||[]).map(t=>({...t,x:Math.ceil(ts(t.time_utc)/3600)*3600})).sort((a,b)=>a.x-b.x);
+  const tr=(D.trades||[]).filter(t=>!t.daily).map(t=>({...t,x:Math.ceil(ts(t.time_utc)/3600)*3600})).sort((a,b)=>a.x-b.x);
   const acc=[1,2,3,4,5],cum={},S={all:[]};acc.forEach(a=>{cum[a]=0;S[a]=[]});let all=0;
   const t0=tr.length?tr[0].x-3600:D.now-3600,t1=Math.max(D.now,t0+3600);
   acc.forEach(a=>S[a].push([t0,0]));S.all.push([t0,0]);
@@ -129,16 +131,20 @@ function drawPX(){
 }
 function tables(){
   const st=(D.status&&D.status.accounts)||{};const rows=Object.entries(st);
+  const cnt=(D.trades||[]).filter(t=>!t.daily);   // the bot's own status.json still counts the 5 PM daily-market trades; recount without them
+  rows.forEach(([k,v])=>{const a=+k.split(' ')[0],x=cnt.filter(t=>t.account===a);v.trades=x.length;v.wins=x.filter(t=>t.won).length;v.pnl_dollars=+x.reduce((s,t)=>s+(t.pnl||0),0).toFixed(2)});
   document.getElementById('acc').innerHTML='<tr><th class="l">Account</th><th>Size</th><th>Trades</th><th>Won</th><th>Win %</th><th>P/L</th><th>Open</th></tr>'+
    rows.map(([k,v])=>{const a=+k.split(' ')[0];const wp=v.trades?(100*v.wins/v.trades).toFixed(1)+'%':'–';
     const size=typeof v.size==='number'?v.size+' ct':(v.size+(v.next_stake_dollars!=null?` · next $${(+v.next_stake_dollars).toFixed(2)}`:''));
     return `<tr><td class="l"><span class="sw" style="background:${col(a)}"></span>${a}. ${NAMES[a]||k}</td><td>${size}</td><td>${v.trades}</td><td>${v.wins}</td><td>${wp}</td><td class="${v.pnl_dollars>0?'won':v.pnl_dollars<0?'lost':''}">${sgn(v.pnl_dollars)}</td><td>${v.open}</td></tr>`}).join('');
   const op=D.open||[];document.getElementById('opn').innerHTML=op.length?'<tr><th class="l">Bought</th><th class="l">Acct</th><th class="l">Band</th><th>Side</th><th>Ct</th><th>Price</th><th>Model</th></tr>'+
    op.map(o=>`<tr><td class="l">${fDT.format(new Date(ts(o.time_utc)*1000))}</td><td class="l"><span class="sw" style="background:${col(o.account)}"></span>${o.account}</td><td class="l">${band(o.lo,o.hi)}</td><td class="op">${o.side}</td><td>${o.contracts}</td><td>${Math.round(o.avg_price*100)}¢</td><td>${(o.model*100).toFixed(1)}¢</td></tr>`).join(''):'<tr><td class="mut">No open positions right now.</td></tr>';
-  const tr=(D.trades||[]).slice().sort((a,b)=>ts(a.time_utc)-ts(b.time_utc));let cum=0,w=0;const out=tr.map((t,i)=>{cum+=t.pnl;w+=t.won?1:0;return {...t,cum,wp:100*w/(i+1)}}).reverse();
+  const trAll=(D.trades||[]).slice().sort((a,b)=>ts(a.time_utc)-ts(b.time_utc));const tr=trAll.filter(t=>!t.daily);let cum=0,w=0,n=0;const out=trAll.map(t=>{if(t.daily)return {...t,cum:null,wp:null};cum+=t.pnl;w+=t.won?1:0;n++;return {...t,cum,wp:100*w/n}}).reverse();
+  const nd=trAll.length-tr.length;
   document.getElementById('trd').innerHTML='<tr><th class="l">Bought (ET)</th><th class="l">Acct</th><th class="l">Band</th><th>Side</th><th>Contracts</th><th>Price</th><th>Model</th><th>Spent</th><th>Result</th><th>P/L</th><th>Cum P/L</th><th>Win % so far</th></tr>'+
-   (out.length?out.map(t=>`<tr><td class="l">${fDT.format(new Date(ts(t.time_utc)*1000))}</td><td class="l"><span class="sw" style="background:${col(t.account)}"></span>${t.account}</td><td class="l">${band(t.lo,t.hi)}</td><td>${t.side}</td><td>${t.contracts}</td><td>${Math.round(t.price*100)}¢</td><td>${(t.model*100).toFixed(1)}¢</td><td>${money(t.cost)}</td><td class="${t.won?'won':'lost'}">${t.won?'Won':'Lost'}</td><td class="${t.pnl>=0?'won':'lost'}">${sgn(t.pnl)}</td><td>${sgn(t.cum)}</td><td>${t.wp.toFixed(1)}%</td></tr>`).join(''):'<tr><td class="mut" colspan="12">No settled trades yet.</td></tr>');
-  const tot=(D.status&&D.status.total_pnl_dollars)||0;const T=document.getElementById('tot');T.textContent=sgn(tot);T.className='big '+(tot>0?'won':tot<0?'lost':'');
+   (out.length?out.map(t=>`<tr><td class="l">${fDT.format(new Date(ts(t.time_utc)*1000))}</td><td class="l"><span class="sw" style="background:${col(t.account)}"></span>${t.account}</td><td class="l">${band(t.lo,t.hi)}</td><td>${t.side}</td><td>${t.contracts}</td><td>${Math.round(t.price*100)}¢</td><td>${(t.model*100).toFixed(1)}¢</td><td>${money(t.cost)}</td><td class="${t.won?'won':'lost'}">${t.won?'Won':'Lost'}</td><td class="${t.pnl>=0?'won':'lost'}">${sgn(t.pnl)}</td><td>${t.cum==null?'<span class="mut">not counted</span>':sgn(t.cum)}</td><td>${t.wp==null?'<span class="mut">5pm daily mkt</span>':t.wp.toFixed(1)+'%'}</td></tr>`).join(''):'<tr><td class="mut" colspan="12">No settled trades yet.</td></tr>')+
+   (nd?`<tr><td class="mut" colspan="12">${nd} trade(s) marked "5pm daily mkt" were made in Kalshi's daily/weekly 5 PM ET market, not an hourly one; they are left out of the cumulative P/L and win % here and in the chart above.</td></tr>`:'');
+  const tot=+cnt.reduce((s,t)=>s+(t.pnl||0),0).toFixed(2);const T=document.getElementById('tot');T.textContent=sgn(tot);T.className='big '+(tot>0?'won':tot<0?'lost':'');
   const n=tr.length,wn=tr.filter(t=>t.won).length;
   document.getElementById('sub').textContent=`${n} settled trades · ${n?(100*wn/n).toFixed(1):'–'}% won · ${op.length} open · ${D.signals} signals, ${D.unfilled} not filled`+(D.status&&D.status.updated_utc?` · bot updated ${fDT.format(new Date(D.status.updated_utc))}`:'');
 }

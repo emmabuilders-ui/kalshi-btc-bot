@@ -27,7 +27,8 @@ import numpy as np
 from .fast_push import all_levels
 from . import prob_bands
 from .late_breakdown import WARMUP, KalshiClient
-from .range_paper import N_BANDS, RangeModel, _f, band_mid, event_ticker, qualifies
+from .range_paper import (N_BANDS, RangeModel, _f, band_mid, event_ticker, hourly_markets, is_daily_close,
+                          is_daily_event, qualifies)
 
 log = logging.getLogger("kalshi_btc_bot")
 
@@ -104,9 +105,12 @@ def settled_summary(rows: list[dict]) -> dict:
 
 def perf_row(bot: str, rows: list[dict]) -> dict:
     """Settled trades of one bot, each trade counted once: win %, average price paid, win % minus price,
-    break-even (price plus fee, per contract) and EV (profit per contract after fees)."""
+    break-even (price plus fee, per contract) and EV (profit per contract after fees). Trades in Kalshi's
+    daily/weekly 5 PM market (made before the hourly-only filter) are left out and counted in `daily`."""
     n = wins = 0
     price = be = ev = pnl = 0.0
+    daily = sum(1 for r in rows if is_daily_event(r.get("ticker")))
+    rows = [r for r in rows if not is_daily_event(r.get("ticker"))]
     for r in rows:
         x, p, c = _num(r.get("pnl")), _num(r.get("avg_price")), _num(r.get("contracts"))
         if x is None or p is None or not c:
@@ -118,11 +122,11 @@ def perf_row(bot: str, rows: list[dict]) -> dict:
         ev += x / c
         pnl += x
     if not n:
-        return {"bot": bot, "trades": 0}
+        return {"bot": bot, "trades": 0, "daily": daily}
     win, avg = wins / n * 100, price / n * 100
     return {"bot": bot, "trades": n, "wins": wins, "win_pct": round(win, 1), "avg_price": round(avg, 1),
             "gap": round(win - avg, 1), "break_even": round(be / n * 100, 1), "ev": round(ev / n * 100, 1),
-            "pnl": round(pnl, 2)}
+            "pnl": round(pnl, 2), "daily": daily}
 
 
 def pnl_points(rows: list[dict], bot: str) -> list[dict]:
@@ -237,6 +241,8 @@ def history_events(L: dict[str, Path]) -> dict:
     rng += favorite_events(L.get("maker"), "Maker")
     rng += favorite_events(L.get("quiet"), "Quiet")
     rng += favorite_events(L.get("bandml"), "Band ML")
+    for e in rng:  # trades made in Kalshi's daily/weekly 5 PM market before the hourly-only filter existed
+        e["daily"] = is_daily_close(e.get("close"))
     sessions = []
     for r in _rows(L["breakdown"] / "sessions.csv"):
         k = _num(r.get("strike"))
@@ -655,7 +661,7 @@ class Dashboard:
         left = max(1, (close - t) // 60)
         v = self.model.vol(np.array(closes)) if None not in closes else None
         markets = self.k.get("/markets", event_ticker=event_ticker(close), limit=1000).get("markets", [])
-        markets = [m for m in markets if m.get("status") in ("active", "open")]
+        markets = hourly_markets(markets, event_ticker(close))
         markets = sorted(markets, key=lambda m: abs(band_mid(m) - price))[:N_BANDS]
         rows = []
         for m in sorted(markets, key=band_mid, reverse=True):
@@ -875,6 +881,8 @@ def range5_events(d: Path) -> list:
         out.append({"t": t, "close": p.get("close_ts") or (t // 3600 + 1) * 3600, "side": p.get("side"), "lo": lo,
                     "hi": hi, "n": p.get("contracts"), "price": _num(p.get("avg_price")), "model": _num(p.get("model")),
                     "status": "open", "pnl": None, "cost": _num(p.get("cost")), "acct": int(p.get("account") or 0)})
+    for e in out:
+        e["daily"] = is_daily_close(e.get("close"))
     return out
 
 
@@ -1160,7 +1168,8 @@ const etMidnight=t=>{const [h,m]=fH.format(new Date(t*1000)).split(':').map(Numb
 function perfTable(){const R=D.perf||[];const c=v=>v==null?'–':(v>=0?'+':'')+v.toFixed(1);
  $('perf').innerHTML='<tr><th>Bot</th><th>Trades</th><th>Won</th><th>Win %</th><th>Avg price</th><th>Win % − price</th><th>Break-even %</th><th>EV per contract</th><th>Total P/L</th></tr>'+
  R.map(r=>r.trades?`<tr><td>${r.bot}</td><td>${r.trades}</td><td>${r.wins}</td><td>${r.win_pct.toFixed(1)}%</td><td>${r.avg_price.toFixed(1)}¢</td><td style="color:var(${r.gap>=0?'--win':'--lose'})">${c(r.gap)} pts</td><td>${r.break_even==null?'–':r.break_even.toFixed(1)+'%'}</td><td style="color:var(${(r.ev||0)>=0?'--win':'--lose'})">${c(r.ev)}¢</td><td style="color:var(${r.pnl>=0?'--win':'--lose'})">${money(r.pnl)}</td></tr>`
-  :`<tr><td>${r.bot}</td><td colspan="8" class="mut">no settled trades yet</td></tr>`).join('')}
+  :`<tr><td>${r.bot}</td><td colspan="8" class="mut">no settled trades yet</td></tr>`).join('')+
+ (R.some(r=>r.daily)?`<tr><td colspan="9" class="mut">Not counted above: ${R.filter(r=>r.daily).map(r=>r.bot+' '+r.daily).join(', ')} trade(s) in Kalshi's daily/weekly 5 PM ET market (not an hourly market; tagged "5pm daily mkt" in the trades table).</td></tr>`:'')}
 const money=x=>(x<0?'-$':'+$')+Math.abs(x).toFixed(2);
 const usd=x=>'$'+x.toLocaleString('en-US',{maximumFractionDigits:0});
 const tsOf=s=>Date.parse(s.replace(' ','T')+'Z')/1000;
@@ -1583,12 +1592,13 @@ $('trades').addEventListener('click',e=>{const tr=e.target.closest('tr.trrow');i
 function trades(){if(!H||HV===TSIG)return;TSIG=HV;
  const R=[];
  for(const r of H.range||[])R.push({t:r.t,bot:r.bot||'Range',mkt:`${r.lo==null?'':usd(r.lo)}–${r.hi==null?'':usd(r.hi+0.01).slice(1)} · ${hm(r.close)}${r.bot==='FP range'&&r.level?' · '+r.level:''}`,
-  side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl,cost:r.cost,acct:r.acct});
+  side:r.side,n:r.n,price:r.price,model:r.model,status:r.status,pnl:r.pnl,cost:r.cost,acct:r.acct,daily:!!r.daily});
  for(const b of H.buys||[])R.push({t:b.t,bot:b.bot,mkt:`15-min ${hm(Math.floor(b.t/900)*900+900)} · ${b.level||''}`,
   side:b.side,n:b.n,price:b.price!=null?b.price:b.ask,model:b.model!=null?b.model:null,status:b.status,pnl:b.pnl,cost:b.cost});
  R.sort((a,b)=>a.t-b.t);
  let cum=0,spent=0,nset=0,wins=0,sp=0,sm=0,nm=0;const W={};const z=()=>({w:0,l:0,o:0,p:0,s:0,sp:0,sm:0,nm:0});for(const k of ['Range','Breakdown','Fast push','FP range','Favorite','Trend broad','Trend tight','Maker','Quiet','Squeeze','Squeeze maker','Model gap','Correction ML','Longshot','Band ML'])W[k]=z();
  for(const r of R){const w=W[r.bot]||(W[r.bot]=z());
+  if(r.daily){r.mkt+=' · <span class="mut">5pm daily mkt, not counted</span>';r.cum=null;r.spent=null;continue}
   if(r.cost!=null){spent+=r.cost;w.s+=r.cost}r.spent=r.cost!=null?spent:null;
   if(r.status==='open'){w.o++;r.cum=null;continue}nset++;
   r.status==='won'?(w.w++,wins++):w.l++;w.p+=r.pnl||0;cum+=r.pnl||0;r.cum=cum;r.avg=cum/nset;
