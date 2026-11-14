@@ -42,6 +42,8 @@ def test_perf_row_leaves_out_the_5pm_daily_market_trades():
             {"ticker": "KXBTC-26NOV1317-B68250", "avg_price": "0.91", "contracts": "82", "cost": "75.10", "won": "1", "pnl": "6.90"}]
     r = perf_row("X", rows)
     assert (r["trades"], r["wins"], r["daily"], r["pnl"]) == (1, 1, 1, 3.8)
+    r = perf_row("5 PM range", rows)   # a bot built for that market keeps all its trades
+    assert (r["trades"], r["daily"], r["pnl"]) == (2, 0, 10.7)
 
 
 def test_damaged_gzip_member_yields_what_came_before_it(tmp_path):
