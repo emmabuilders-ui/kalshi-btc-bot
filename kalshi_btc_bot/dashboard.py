@@ -103,14 +103,18 @@ def settled_summary(rows: list[dict]) -> dict:
     return {"trades": len(pnl), "wins": won, "pnl": round(sum(pnl), 2)}
 
 
+DAILY_MARKET_BOTS = {"5 PM range"}   # bots that trade Kalshi's 5 PM daily/weekly market on purpose (PR #42)
+
+
 def perf_row(bot: str, rows: list[dict]) -> dict:
     """Settled trades of one bot, each trade counted once: win %, average price paid, win % minus price,
     break-even (price plus fee, per contract) and EV (profit per contract after fees). Trades in Kalshi's
     daily/weekly 5 PM market (made before the hourly-only filter) are left out and counted in `daily`."""
     n = wins = 0
     price = be = ev = pnl = 0.0
-    daily = sum(1 for r in rows if is_daily_event(r.get("ticker")))
-    rows = [r for r in rows if not is_daily_event(r.get("ticker"))]
+    daily = 0 if bot in DAILY_MARKET_BOTS else sum(1 for r in rows if is_daily_event(r.get("ticker")))
+    if daily:
+        rows = [r for r in rows if not is_daily_event(r.get("ticker"))]
     for r in rows:
         x, p, c = _num(r.get("pnl")), _num(r.get("avg_price")), _num(r.get("contracts"))
         if x is None or p is None or not c:
@@ -242,8 +246,9 @@ def history_events(L: dict[str, Path]) -> dict:
     rng += favorite_events(L.get("quiet"), "Quiet")
     rng += favorite_events(L.get("bandml"), "Band ML")
     rng += favorite_events(L.get("fivepm"), "5 PM range")
-    for e in rng:  # trades made in Kalshi's daily/weekly 5 PM market before the hourly-only filter existed
-        e["daily"] = is_daily_close(e.get("close")) and e.get("bot") != "5 PM range"
+    for e in rng:  # trades made in Kalshi's daily/weekly 5 PM market before the hourly-only filter existed;
+        # a bot built to trade that market on purpose (name in DAILY_MARKET_BOTS) is not flagged
+        e["daily"] = is_daily_close(e.get("close")) and e.get("bot") not in DAILY_MARKET_BOTS
     sessions = []
     for r in _rows(L["breakdown"] / "sessions.csv"):
         k = _num(r.get("strike"))
