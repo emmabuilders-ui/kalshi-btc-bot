@@ -57,3 +57,14 @@ QLIKE Sep-Oct (frozen Dec-Aug fit), next 15 / next 60 min:
 - XRP: HAR3 .332/.265, ATR14 .336/.301, EWMA .358/.327, s100 .401/.351. HAR beats s100 10/10; beats ATR14 7/10 (15 min) and 9/10 (60 min).
 Tau (15 min, Sep-Oct): ETH ATR14 .545 > HAR3 .527 > EWMA .524 > s100 .492; XRP ATR14 .574 > HAR3 .555 > EWMA .554 > s100 .526. Same pattern as BTC: HAR best on level (QLIKE), ATR14 best on ranking (tau).
 Scripts: bn/dl.sh, bn/build.py, run_coin.sh in research/har_vol/.
+
+## ETH and XRP, stage 2 (added 2026-11-14, Michael: "do it")
+Kalshi hourly range bands (KXETH 1.46M band markets, KXXRP 593k), nearest 6-14 bands per hour (within 2.5% of price), 1-min candles for the last 30 min, spread <= 5c.
+Price at each minute = Binance 1-s close + basis, basis = Kalshi settlement value minus Binance 60-s average at the PREVIOUS hour's close (ETH median -$1.04, XRP -$0.0005, about -0.04% both). Tables rebuilt on Dec-Aug per coin. XRP quotes are thin before Jul 2026 (2-8k band-minutes a month, none in Dec), so its Dec-Aug column is mostly Jul-Aug.
+
+Brier Sep-Oct (lower better) / AUC:
+- ETH (452k / 199k band-minutes): ATR14 .07077 (.902), Kalshi .07080 (.901), EWMA .07084 (.902), s100 .07096 (.901), HAR3 .07103 (.901), oracle .06810 (.912). ATR14 beats Kalshi 6/11 months, HAR 5/11.
+- XRP (146k / 98k): ATR14 .03353 (.989), EWMA .03365, HAR3 .03366, s100 .03373, Kalshi .03394 (.989), oracle .03193 (.991). All inputs beat Kalshi on XRP (thin market, as found before); ATR14 best 10/10 months vs Kalshi; HAR beats s100 only 4/10 months.
+Trades YES 90-99c model >= ask+2c, first minute per band, Sep-Oct: ETH ATR14 344 tr 96.5% won at 92.5c +3.5c vs s100 281 tr 95.4% at 92.6c +2.3c vs HAR3 211 tr 94.8% at 92.2c +2.1c; XRP ATR14 941 tr 96.5% at 92.8c +3.2c, s100 996 tr 96.5% at 92.8c +3.2c, HAR3 1,015 tr 96.2% at 92.8c +2.9c.
+Same conclusion as BTC: HAR = s100 on Brier (slightly worse), no pricing gain; ATR14 is the best tradable input on all three coins; the oracle gap (0.002-0.003) is the ceiling.
+Scripts: kx/markets.py, kx/candles.py, stage2_coin.py.
