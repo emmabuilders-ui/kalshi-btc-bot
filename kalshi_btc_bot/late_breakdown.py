@@ -57,6 +57,7 @@ WINDOW = (60, 151)          # seconds left at entry: 60 <= left < 151 (shared by
 KALSHI = "https://api.elections.kalshi.com"
 API = "/trade-api/v2"
 SERIES = "KXBTC15M"
+MAX_15M_LIFE = 30 * 60   # a 15-minute market is listed 15 minutes before it closes; skip anything longer-lived
 
 ZZ, CLUSTER, MIN_TOUCH, BREAK, GAP = 75.0, 40.0, 2, 5.0, 10.0
 SESSION = 900
@@ -225,6 +226,8 @@ class KalshiClient:
             close_ts = datetime.fromisoformat(m["close_time"].replace("Z", "+00:00")).timestamp()
             open_ts = datetime.fromisoformat(m["open_time"].replace("Z", "+00:00")).timestamp()
             if m.get("floor_strike") is None:  # listed a few seconds before its strike is set
+                continue
+            if close_ts - open_ts > MAX_15M_LIFE:  # not a 15-minute market (a daily or weekly one in the series)
                 continue
             if open_ts <= now < close_ts and (best is None or close_ts < best["close_ts"]):
                 best = {"ticker": m["ticker"], "strike": float(m["floor_strike"]),

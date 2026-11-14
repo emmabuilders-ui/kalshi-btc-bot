@@ -23,7 +23,7 @@ import json
 import os
 
 from .late_breakdown import kalshi_fee, log
-from .range_paper import CONTRACTS, N_BANDS, RangePaper, _f, _iso, band_mid, event_ticker, fill
+from .range_paper import CONTRACTS, N_BANDS, RangePaper, _f, _iso, band_mid, event_ticker, hourly_markets, fill
 
 FIRST_MINUTE, LAST_MINUTE = 18, 1
 LOW, HIGH = 0.61, 0.95
@@ -66,7 +66,7 @@ class QuietPaper(RangePaper):
         anchor = self.anchor.setdefault(close, self.price_at(close - 1800) or price)
         ev = event_ticker(close)
         markets = self.k.get("/markets", event_ticker=ev, limit=1000).get("markets", [])
-        markets = [m for m in markets if m.get("status") in ("active", "open")]
+        markets = hourly_markets(markets, ev)
         if not markets:
             log.warning("no open markets for %s", ev)
             return
