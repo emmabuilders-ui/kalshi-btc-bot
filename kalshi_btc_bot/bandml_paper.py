@@ -31,7 +31,7 @@ import numpy as np
 
 from .late_breakdown import kalshi_fee, log
 from .model_gap_paper import DirectModel, book_asks, gap, limit_price
-from .range_paper import CONTRACTS, N_BANDS, RangePaper, _f, _iso, band_mid, event_ticker, fill
+from .range_paper import CONTRACTS, N_BANDS, RangePaper, _f, _iso, band_mid, event_ticker, hourly_markets, fill
 
 MODEL_FILE = "band_ml_correction.json"
 MAX_LEFT, MIN_LEFT = 24, 7      # minutes left, inclusive
@@ -151,7 +151,7 @@ class BandMLPaper(RangePaper):
         anchor = self.anchor.setdefault(close, self.price_at(close - 1800) or price)
         ev = event_ticker(close)
         markets = self.k.get("/markets", event_ticker=ev, limit=1000).get("markets", [])
-        markets = [m for m in markets if m.get("status") in ("active", "open")]
+        markets = hourly_markets(markets, ev)
         if not markets:
             log.warning("no open markets for %s", ev)
             return
