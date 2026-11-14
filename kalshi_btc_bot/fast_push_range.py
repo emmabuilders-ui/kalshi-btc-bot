@@ -31,7 +31,7 @@ import time
 from .fast_push import (CONTRACTS, MAX_LAG, PUSH_MULT, PUSH_SECS, WINDOW, FastPushPaper, FPSession,
                         minute_vol, price_ok, push_reading)
 from .late_breakdown import _iso, kalshi_fee, log
-from .range_paper import _f, event_ticker, fill
+from .range_paper import _f, event_ticker, fill, hourly_markets
 from .settlement import band_prob, side_prob, sigma_1s, worth_it
 
 
@@ -63,7 +63,7 @@ class FastPushRangePaper(FastPushPaper):
     def range_markets(self, close_ts: int) -> list[dict]:
         ev = event_ticker(close_ts)
         markets = self.k.get("/markets", event_ticker=ev, limit=1000).get("markets", [])
-        return [m for m in markets if m.get("status") in ("active", "open")]
+        return hourly_markets(markets, ev)
 
     def judge(self, s: FPSession, t: int, name: str, side: str, lev: float, price: float):
         left = s.close_ts - (t + 1)

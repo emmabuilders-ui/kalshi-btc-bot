@@ -31,6 +31,7 @@ import json
 import logging
 import math
 import os
+import re
 import time
 from datetime import datetime, timezone
 from importlib import resources
@@ -142,6 +143,57 @@ def fill(other_bids: list[list[float]], contracts: int, limit: float) -> tuple[i
 def event_ticker(close_ts: int) -> str:
     e = datetime.fromtimestamp(close_ts, ET)
     return f"{SERIES}-{e:%y}{e:%b}".upper() + f"{e:%d%H}"
+
+
+# ----------------------------------------------------------------------------- hourly markets only
+# Kalshi's KXBTC series holds the hourly range markets (listed one hour before they close) AND, at the
+# 5 PM ET close, the daily "BTC price range at 5pm" market (listed a day ahead, $250 bands) or the weekly
+# one (listed a week ahead, $500 bands). The daily/weekly market has the same event ticker an hourly
+# market would have, so every hourly-band bot used to trade it as if it were one. These helpers keep
+# only markets that lived as hourly markets do: open for no more than MAX_HOURLY_LIFE before they close.
+MAX_HOURLY_LIFE = 2 * 3600
+_skipped_events: set[str] = set()
+
+
+def market_life(m: dict) -> float | None:
+    """Seconds between a market's open_time and close_time, or None when either is missing."""
+    try:
+        o = datetime.fromisoformat(str(m["open_time"]).replace("Z", "+00:00"))
+        c = datetime.fromisoformat(str(m["close_time"]).replace("Z", "+00:00"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return (c - o).total_seconds()
+
+
+def is_hourly_market(m: dict) -> bool:
+    life = market_life(m)
+    return life is None or life <= MAX_HOURLY_LIFE
+
+
+def hourly_markets(markets: list[dict], ev: str = "") -> list[dict]:
+    """Open markets of one hourly event. Returns [] (and logs once) when the event is Kalshi's
+    daily/weekly 5 PM market, so no hourly-band bot trades it."""
+    opened = [m for m in markets if m.get("status") in ("active", "open")]
+    keep = [m for m in opened if is_hourly_market(m)]
+    if opened and not keep and ev not in _skipped_events:
+        _skipped_events.add(ev)
+        life = market_life(opened[0]) or 0
+        log.warning("%s is not an hourly market (open %.0f h before close): skipped", ev, life / 3600)
+    return keep
+
+
+def is_daily_event(ticker: str | None) -> bool:
+    """True for a KXBTC ticker of the 5 PM ET (hour 17) event, which is the daily/weekly market, not an
+    hourly one. Used to flag the trades made before the filter above existed."""
+    m = re.match(r"KXBTC-\d\d[A-Z]{3}\d\d(\d\d)", ticker or "")
+    return bool(m) and m.group(1) == "17"
+
+
+def is_daily_close(close_ts: int | float | None) -> bool:
+    """Same flag from a close timestamp: the hour closing at 5 PM Eastern."""
+    if not close_ts:
+        return False
+    return datetime.fromtimestamp(int(close_ts), ET).hour == 17
 
 
 def band_mid(m: dict) -> float:
@@ -295,7 +347,7 @@ class RangePaper:
         anchor = self.anchor.setdefault(close, self.price_at(close - 1800) or price)
         ev = event_ticker(close)
         markets = self.k.get("/markets", event_ticker=ev, limit=1000).get("markets", [])
-        markets = [m for m in markets if m.get("status") in ("active", "open")]
+        markets = hourly_markets(markets, ev)
         if not markets:
             log.warning("no open markets for %s", ev)
             return
