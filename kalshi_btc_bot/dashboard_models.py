@@ -6,7 +6,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from .dashboard import _json, _num, _rows
+from .dashboard import FILTER_CSS, FILTER_JS, _json, _num, _rows, perf_row
 
 # key in the dashboard's log map -> (name on the page, one-line rule)
 MODEL_BOTS = {
@@ -24,7 +24,7 @@ def _trade(r: dict, bot: str) -> dict:
 
 
 def models_data(logs: dict[str, Path]) -> dict:
-    bots, trades, opened, checks = [], [], [], []
+    bots, trades, opened, checks, perf = [], [], [], [], []
     for key, (name, rule) in MODEL_BOTS.items():
         d = logs.get(key)
         if not d:
@@ -38,6 +38,7 @@ def models_data(logs: dict[str, Path]) -> dict:
                      "pnl": sum(t["pnl"] or 0 for t in tr), "open": len(op), "checks": len(sig),
                      "looks": sum(1 for r in sig if str(r.get("side") or "")),
                      "updated_utc": _json(d / "status.json", {}).get("updated_utc")})
+        perf.append(perf_row(name, _rows(d / "trades.csv")))
         trades += tr
         opened += op
         for r in sig[-CHECK_ROWS:]:
@@ -45,7 +46,7 @@ def models_data(logs: dict[str, Path]) -> dict:
                            "p_yes": _num(r.get("model_p_yes")), "yes_ask": _num(r.get("yes_ask")), "no_ask": _num(r.get("no_ask")),
                            "yes_gap": _num(r.get("yes_gap_pts")), "no_gap": _num(r.get("no_gap_pts")),
                            "decision": r.get("decision")})
-    return {"now": time.time(), "bots": bots, "trades": trades, "open": opened, "checks": checks}
+    return {"now": time.time(), "bots": bots, "trades": trades, "open": opened, "checks": checks, "perf": perf}
 
 
 PAGEM = r"""<!doctype html><html><head><meta charset="utf-8">
@@ -78,18 +79,20 @@ th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--card)
 .legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin:6px 0;color:var(--mut)}
 .navbtn{padding:5px 12px;border:1px solid var(--grid2);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-weight:600;font-size:13px}
 #tip{position:fixed;pointer-events:none;background:var(--card);border:1px solid var(--grid2);border-radius:6px;padding:6px 8px;font-size:12px;display:none;z-index:5}
-</style></head><body><div class="wrap">
+/*FILTER_CSS*/</style></head><body><div class="wrap">
 <div class="top"><a class="navbtn" href="../">← Main chart</a><h1>ML model bots</h1>
 <span class="mut">Paper only, no real orders · times ET · updates every 10 s</span><span id="err" class="lost"></span></div>
 <div class="tiles" id="tiles"></div>
 <div class="card" style="padding:8px"><h2 style="margin:4px 4px 6px">Bitcoin and the ML bots' trades</h2>
 <iframe src="../?v=models" title="Bitcoin chart with the ML bots' trades" style="width:100%;height:600px;border:0;display:block"></iframe></div>
+<div class="card"><h2>Results</h2><div class="scroll"><table id="perf"></table></div></div>
 <div class="card"><h2>Profit, settled trades</h2><div class="legend" id="leg"></div><canvas id="pl" height="170"></canvas></div>
 <div class="card"><h2>Open positions</h2><div class="scroll"><table id="opn"></table></div></div>
 <div class="card"><h2>All trades</h2><div class="scroll"><table id="trd"></table></div></div>
 <div class="card"><h2>Latest checks</h2><p class="mut" style="margin:0 0 6px;font-size:12px">Every minute each bot checks the model against both asks. Gap = model probability − ask − fee, in points.</p><div class="scroll"><table id="chk"></table></div></div>
 </div><div id="tip"></div>
 <script>
+/*FILTER_JS*/
 const TZ='America/New_York';
 const fDT=new Intl.DateTimeFormat('en-US',{timeZone:TZ,month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true});
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -134,6 +137,9 @@ pl.addEventListener('mousemove',e=>{if(!geom)return;const r=pl.getBoundingClient
 pl.addEventListener('mouseleave',()=>tip.style.display='none');
 const bcell=n=>`<td class="l"><span class="sw" style="background:${COL[n]}"></span>${n}</td>`;
 function tables(){
+  const f1=v=>v==null?'–':(v>=0?'+':'')+v.toFixed(1);
+  document.getElementById('perf').innerHTML='<tr><th class="l">Bot</th><th>Trades</th><th>Won</th><th>Win %</th><th>Avg price</th><th>Win % − price</th><th>Break-even %</th><th>EV per contract</th><th>Total P/L</th></tr>'+
+   D.perf.map(P=>P.trades?`<tr>${bcell(P.bot)}<td>${P.trades}</td><td>${P.wins}</td><td>${P.win_pct}%</td><td>${P.avg_price}¢</td><td class="${P.gap>0?'won':'lost'}">${f1(P.gap)}</td><td>${P.break_even}%</td><td class="${P.ev>0?'won':'lost'}">${f1(P.ev)}¢</td><td class="${P.pnl>=0?'won':'lost'}">${sgn(P.pnl)}</td></tr>`:`<tr>${bcell(P.bot)}<td colspan="8" class="mut">No settled trades yet. Retire rule: under +1¢ per contract at 300 trades.</td></tr>`).join('');
   const op=D.open;document.getElementById('opn').innerHTML=op.length?'<tr><th class="l">Bot</th><th class="l">Bought</th><th>Side</th><th>Min left</th><th>Ct</th><th>Price</th><th>Model</th><th>Gap</th></tr>'+
    op.map(o=>`<tr>${bcell(o.bot)}<td class="l">${fDT.format(new Date(ts(o.time_utc)*1000))}</td><td class="op">${o.side}</td><td>${o.secs_left==null?'–':(o.secs_left/60).toFixed(1)}</td><td>${o.contracts}</td><td>${c(o.price)}</td><td>${pc(o.model)}</td><td>${pt(o.gap)}</td></tr>`).join(''):'<tr><td class="mut">No open positions right now.</td></tr>';
   const tr=D.trades.slice().sort((a,b)=>ts(b.time_utc)-ts(a.time_utc));
@@ -146,3 +152,5 @@ function tables(){
 async function tick(){try{const r=await fetch('data.json',{cache:'no-store'});D=await r.json();document.getElementById('err').textContent='';tiles();drawPL();tables()}catch(e){document.getElementById('err').textContent='connection lost, retrying…'}}
 tick();setInterval(tick,10000);addEventListener('resize',()=>{if(D)drawPL()});
 </script></body></html>"""
+PAGEM = PAGEM.replace("/*FILTER_CSS*/", FILTER_CSS).replace(
+    "/*FILTER_JS*/", FILTER_JS + "\nfor (const id of ['perf','opn','trd','chk']) ftWatch(id);")
