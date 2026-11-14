@@ -852,7 +852,7 @@ class Dashboard:
             ("Trend tight", "trend_tight"), ("Maker (limit order)", "maker"), ("Quiet favorite", "quiet"),
             ("Squeeze", "squeeze"), ("Squeeze maker", "squeeze_maker"), ("Model gap (Direct ML, NO)", "model_gap"),
             ("Correction ML (NO)", "corr_gap"), ("Longshot (15c or less)", "longshot"),
-            ("Band ML (YES, 7-24 min)", "bandml"), ("5 PM range (daily/weekly, YES)", "fivepm"))]
+            ("Band ML (YES, 7-24 min)", "bandml"), ("5 PM range", "fivepm"))]
         for c in COINBREAK:
             out.append(perf_row(f"Break + gate {c} (15-min)", _rows((L.get("coinbreak") or none) / c / "trades.csv")))
         if L.get("range5"):
