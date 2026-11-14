@@ -1,10 +1,10 @@
 {
- "updated_utc": "2026-11-14T05:26:52+00:00",
+ "updated_utc": "2026-11-14T06:26:57+00:00",
  "coin": "SOL",
- "settled_trades": 2,
- "wins": 1,
- "pnl_dollars": 1.9,
- "session": "KXSOL15M-26NOV140030-30",
+ "settled_trades": 3,
+ "wins": 2,
+ "pnl_dollars": 11.35,
+ "session": "KXSOL15M-26NOV140130-30",
  "max_mem_mb": 58,
  "note": ""
 }
