@@ -65,6 +65,19 @@ corrected to BRTI.
 Server install (Ubuntu): `deploy/setup.sh`. It installs a service that restarts on reboot and
 pushes the logs to the `paper-logs` branch every hour. `kbot status | log | update`.
 
+### Last-minute lock-in paper trader
+
+Kalshi settles each 15-minute contract on the average of the last 60 BRTI prints, so inside the final minute part
+of the result is already known. `paper-lockin` checks at 50, 40, 30, 20 and 10 seconds before the close and buys
+the side whose settlement-aware chance (locked prints plus the remaining variance, `settlement.py`) beats the ask
+plus the fee by 5 points; one trade per contract, 20 contracts, held to settlement. Paper only. Logs:
+`signals.csv` (every check), `skips.csv` (spread skips), `trades.csv`, `open_trades.json`, `status.json`. The
+dashboard shows it at `/<token>/lockin/`. Decision rule: `docs/paper_test_decision_rule.md`.
+
+```bash
+python -m kalshi_btc_bot paper-lockin --out runs/lockin --contracts 20
+```
+
 ## How the spec maps to the code
 
 | Spec section | Code |
