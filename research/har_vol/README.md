@@ -68,3 +68,7 @@ Brier Sep-Oct (lower better) / AUC:
 Trades YES 90-99c model >= ask+2c, first minute per band, Sep-Oct: ETH ATR14 344 tr 96.5% won at 92.5c +3.5c vs s100 281 tr 95.4% at 92.6c +2.3c vs HAR3 211 tr 94.8% at 92.2c +2.1c; XRP ATR14 941 tr 96.5% at 92.8c +3.2c, s100 996 tr 96.5% at 92.8c +3.2c, HAR3 1,015 tr 96.2% at 92.8c +2.9c.
 Same conclusion as BTC: HAR = s100 on Brier (slightly worse), no pricing gain; ATR14 is the best tradable input on all three coins; the oracle gap (0.002-0.003) is the ceiling.
 Scripts: kx/markets.py, kx/candles.py, stage2_coin.py.
+
+## Every minute x 10c price x YES/NO scan (added 2026-11-14 evening, Michael: "check every price/time/yes or no and compare")
+File har_vol_price_time_scan.xlsx: one flat sheet per data set (BTC hourly, BTC 15-min, ETH hourly, XRP hourly) with n, avg price, win %, win-price, edge after fee, model gap avg/median, months positive, for Kalshi-as-is and each model (buy when model >= price + 2c). "Pass both periods" sheet = n>=100 each period, edge>0 both, above no-model both.
+Head-to-head on the 355 cells with n>=100 for every model in both periods: best Sep-Oct model ATR14 in 118 cells, s100 75, HAR 72, EWMA 52, Kalshi-as-is 38. Mean Sep-Oct edge across cells: HAR -0.03c, EWMA -0.12c, ATR -0.13c, s100 -0.17c, no model -1.30c (Dec-Aug: ATR +1.46, EWMA +1.03, s100 +0.76, HAR +0.74, no model -1.13). Pass cells (of 635): ATR14 178, EWMA 163, s100 148, HAR 146. All four models add the same ~1c over Kalshi's raw price; no model separates from the others at any price/time/side, and HAR is never the standout.
