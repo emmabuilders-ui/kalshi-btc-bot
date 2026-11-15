@@ -1,1 +1,62 @@
-[]
+[
+ {
+  "time_utc": "2026-11-15 22:30:00",
+  "ticker": "KXBTC-26NOV1518-B64950",
+  "side": "NO",
+  "mins_left": 30,
+  "contracts": 20,
+  "avg_price": 0.91,
+  "fee": 0.12,
+  "cost": 18.32,
+  "model": 0.9383,
+  "close_ts": 1794783600
+ },
+ {
+  "time_utc": "2026-11-15 22:34:00",
+  "ticker": "KXBTC-26NOV1518-B65550",
+  "side": "NO",
+  "mins_left": 26,
+  "contracts": 1,
+  "avg_price": 0.96,
+  "fee": 0.01,
+  "cost": 0.97,
+  "model": 0.9804,
+  "close_ts": 1794783600
+ },
+ {
+  "time_utc": "2026-11-15 22:36:00",
+  "ticker": "KXBTC-26NOV1518-B65450",
+  "side": "NO",
+  "mins_left": 24,
+  "contracts": 20,
+  "avg_price": 0.945,
+  "fee": 0.08,
+  "cost": 18.98,
+  "model": 0.9721,
+  "close_ts": 1794783600
+ },
+ {
+  "time_utc": "2026-11-15 22:42:00",
+  "ticker": "KXBTC-26NOV1518-B65350",
+  "side": "NO",
+  "mins_left": 18,
+  "contracts": 20,
+  "avg_price": 0.94,
+  "fee": 0.08,
+  "cost": 18.88,
+  "model": 0.9692,
+  "close_ts": 1794783600
+ },
+ {
+  "time_utc": "2026-11-15 22:42:00",
+  "ticker": "KXBTC-26NOV1518-B64850",
+  "side": "NO",
+  "mins_left": 18,
+  "contracts": 20,
+  "avg_price": 0.96,
+  "fee": 0.06,
+  "cost": 19.26,
+  "model": 0.9818,
+  "close_ts": 1794783600
+ }
+]
