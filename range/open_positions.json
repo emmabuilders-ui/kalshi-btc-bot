@@ -1,14 +1,14 @@
 [
  {
-  "time_utc": "2026-11-16 11:51:00",
-  "ticker": "KXBTC-26NOV1607-B64650",
+  "time_utc": "2026-11-16 12:32:00",
+  "ticker": "KXBTC-26NOV1608-B64150",
   "side": "NO",
-  "mins_left": 9,
+  "mins_left": 28,
   "contracts": 20,
-  "avg_price": 0.93,
-  "fee": 0.1,
-  "cost": 18.7,
-  "model": 0.9702,
-  "close_ts": 1794830400
+  "avg_price": 0.92,
+  "fee": 0.11,
+  "cost": 18.51,
+  "model": 0.9435,
+  "close_ts": 1794834000
  }
 ]
