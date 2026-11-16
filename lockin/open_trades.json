@@ -1,1 +1,22 @@
-[]
+[
+ {
+  "time_utc": "2026-11-16 02:59:20",
+  "ticker": "KXBTC15M-26NOV152200-00",
+  "side": "NO",
+  "level": "lock-in at 40 s",
+  "secs_left": 40,
+  "model_prob": 0.649,
+  "gap_pts": 13.15,
+  "brti": 65070.64,
+  "locked_avg": 65071.06,
+  "strike": 65074.93,
+  "contracts": 20,
+  "avg_price": 0.5,
+  "fee": 0.35,
+  "cost": 10.35,
+  "close_ts": 1794798000,
+  "result": "",
+  "won": "",
+  "pnl": ""
+ }
+]
