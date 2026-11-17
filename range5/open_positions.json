@@ -1,16 +1,30 @@
 [
  {
-  "time_utc": "2026-11-17 19:32:00",
+  "time_utc": "2026-11-17 20:39:00",
   "account": 4,
-  "ticker": "KXBTC-26NOV1715-B63850",
+  "ticker": "KXBTC-26NOV1716-B63750",
   "side": "NO",
-  "mins_left": 28,
+  "mins_left": 21,
   "contracts": 4,
   "wanted": 4,
-  "avg_price": 0.9,
-  "fee": 0.03,
-  "cost": 3.63,
-  "model": 0.9315,
-  "close_ts": 1794945600
+  "avg_price": 0.94,
+  "fee": 0.02,
+  "cost": 3.78,
+  "model": 0.9647,
+  "close_ts": 1794949200
+ },
+ {
+  "time_utc": "2026-11-17 20:40:00",
+  "account": 2,
+  "ticker": "KXBTC-26NOV1716-B63750",
+  "side": "NO",
+  "mins_left": 20,
+  "contracts": 13,
+  "wanted": 13,
+  "avg_price": 0.93,
+  "fee": 0.06,
+  "cost": 12.15,
+  "model": 0.9506,
+  "close_ts": 1794949200
  }
 ]
