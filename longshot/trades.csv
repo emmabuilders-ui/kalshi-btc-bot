@@ -51,3 +51,4 @@ time_utc,ticker,side,level,secs_left,model_prob,gap_pts,contracts,avg_price,fee,
 2026-11-16 21:59:00,KXBTC15M-26NOV161700-00,NO,0.02 vol units from the strike,60,0.4917,36.43,20,0.12,0.15,2.55,yes,0,-2.55
 2026-11-17 13:14:00,KXBTC15M-26NOV170815-15,NO,0.97 vol units from the strike,60,0.166,9.78,20,0.064,0.09,1.37,yes,0,-1.37
 2026-11-17 17:12:00,KXBTC15M-26NOV171215-15,NO,0.91 vol units from the strike,180,0.1826,8.79,20,0.089,0.12,1.9,yes,0,-1.9
+2026-11-17 18:59:00,KXBTC15M-26NOV171400-00,NO,1.24 vol units from the strike,60,0.1074,9.77,20,0.009,0.02,0.2,yes,0,-0.2
