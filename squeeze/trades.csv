@@ -33,3 +33,4 @@ time_utc,ticker,side,level,secs_left,lag_s,contracts,avg_price,fee,cost,result,w
 2026-11-16 21:50:00,KXBTC15M-26NOV161700-00,YES,60-min squeeze,600,1,20,0.7,0.3,14.3,yes,1,5.7
 2026-11-17 08:31:00,KXBTC15M-26NOV170345-45,NO,5-min squeeze,840,1,20,0.77,0.25,15.65,no,1,4.35
 2026-11-17 09:04:01,KXBTC15M-26NOV170415-15,NO,60-min squeeze,659,2,20,0.81,0.22,16.42,no,1,3.58
+2026-11-17 20:17:06,KXBTC15M-26NOV171530-30,YES,5-min squeeze,774,7,20,0.83,0.2,16.8,yes,1,3.2
