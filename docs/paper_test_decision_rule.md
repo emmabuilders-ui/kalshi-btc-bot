@@ -132,3 +132,68 @@ at these prices, so the standard error is roughly 40c/sqrt(n).
 - No changes to the margin, the seconds grid, the 4-second lag limit or the spread skip during the test. A condition added
   later from signals.csv or skips.csv counts only on data after the day it was coded.
 - No new scans of Dec-Oct to rescue the bot. Live trading stays locked off.
+
+## Correction Unleashed ML bot (`kalshi-unleashed`), added 2026-11-17
+
+Rule: the Correction ML model of `kalshi-corr-gap` with its limits taken off. At each minute mark from 14 down to 1 minute
+left on the 15-minute BTC markets, buy YES or NO at any ask from 1c to 99c when (model chance of winning minus ask minus
+taker fee) divided by (ask plus fee) is at least 5%. If both sides qualify, the bigger predicted return. First qualifying
+minute per contract is the one look. 20 contracts at the ask (walking the book only while the predicted return stays at
+5%), held to settlement. Paper only. Live trading stays locked off, no loss limits. The model is the same frozen Dec-Aug
+fit (`data/model_gap_correction.json`), trained on 14 to 1 minutes left, so the bot does not act in the last minute.
+
+Backtest (research/unleashed/, one trade per contract, trade-print asks, after fee, win % vs average price):
+
+| Period | Trades | Win % vs price | After fee |
+|---|---|---|---|
+| Mar-Aug (monthly out-of-fold model) | 15,808 | 46.4 vs 46.1 | -1.25c |
+| Sep-Oct (frozen model, the only period it has not seen) | 4,239 | 46.7 vs 44.7 | +0.66c (standard error 0.68c) |
+
+The model does not beat Kalshi's price on Brier score (x1000, worse by +2.06 Mar-Aug and +1.17 Sep-Oct). Asks of 70c and up were
+the only slice positive in both periods (+0.6c, +3.7c). That cut was found after seeing the data and is NOT part of the rule.
+
+Decision, fixed before the first paper trade and not to be changed afterwards. Judge on paper fills only, by win % minus
+average price paid after the fee, with the win % always shown beside the price. Per-trade standard deviation is about 45c,
+so the standard error is roughly 45c/sqrt(n).
+
+- At 300 trades (about 1 to 2 weeks at 20 to 30 trades a day, standard error about 2.6c): edge under +1.0c retires the bot.
+- At 800 trades (standard error about 1.6c): +2.4c or more with t at least 2 may be considered for small real size, which is
+  Michael's call alone; under +1.0c retires it; in between runs on to 1,300 trades.
+- Report the edge at the logged fills and again with each fill 1c worse, by side, by 10c price bucket and by minutes left.
+- No change to the 5% threshold, the 1-99c range, the minutes checked, the sides or the model during the test. A condition
+  added later from signals.csv counts only on data after the day it was coded.
+- No new scans of Mar-Oct to rescue the bot. Live trading stays locked off.
+
+
+## Direct pocket ML bot (`kalshi-pocket`), added 2026-11-17
+
+Rule: the Direct ML model (`data/model_gap_direct.json`, BRTI inputs only, frozen Dec-Aug fit). At each minute mark from 14 down
+to 4 minutes left on the 15-minute BTC markets, a side is a look when (a) the model's chance of winning is at least 5 points over
+that side's ask (before the fee) and (b) BRTI is at least 0.10% past the strike on that side. Either side, any ask from 1c to 99c.
+The first look per contract is the one trade: 20 contracts at the ask (walking the book while the gap stays at 5 points), held to
+settlement. Paper only. Live trading stays locked off, no loss limits. Every later look is logged without trading, with its look
+number and consecutive-minute run length (`look_no`, `run_no`, `dev_pct` in signals.csv), so the third-consecutive-look variant
+can be judged on logged asks. Taking the third consecutive look as the trade is a separate decision, made only after the first-look
+bot has been judged.
+
+Backtest (research/unleashed/, trade-print asks, after fee, win % vs average price, average / median):
+
+| Period | First look | Third consecutive minute |
+|---|---|---|
+| Mar-Aug (monthly out-of-fold model) | 2,139 trades, 82% vs 78, +3.0c / +17.0c | 385 trades, 88% vs 82, +5.2c / +14.1c |
+| Sep-Oct (frozen model, not seen by the fit) | 710 trades, 85% vs 80, +4.2c / +16.0c | 172 trades, 92% vs 85, +6.9c / +12.2c |
+
+YES and NO are both positive in both periods. The pocket was found by scanning the same data, so neither period is a clean test.
+Without the 0.10% condition or without the gap the same model shows about 0c, so both conditions are part of the rule. A fill 1c
+worse takes about 1c off every number. Checks at 4 to 1 minutes left were tested and the 1-3 minute trades lose; they are not used.
+
+Decision, fixed before the first paper trade and not to be changed afterwards. Judge on paper fills only, by win % minus average
+price paid after the fee, with the win % always shown beside the price. Per-trade standard deviation is about 35c, so the
+standard error is roughly 35c/sqrt(n). Expect about 8 to 11 trades a day.
+
+- At 300 trades (about 4 to 5 weeks, standard error about 2c): edge under +1.0c retires the bot.
+- At 800 trades (standard error about 1.2c): +2.4c or more with t at least 2 may be considered for small real size, which is
+  Michael's call alone; under +1.0c retires it; in between runs on to 1,300 trades.
+- Report the edge at the logged fills and again with each fill 1c worse, by side, by 10c price bucket and by minutes left.
+- No change to the 5-point gap, the 0.10% deviation, the 14-to-4 minute window, the sides or the model during the test.
+- No new scans of Mar-Oct to rescue the bot. Live trading stays locked off.
