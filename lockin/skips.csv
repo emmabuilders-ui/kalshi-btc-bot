@@ -1,0 +1,2 @@
+time_utc,ticker,side,secs_left,ask,bid,spread_c,model_prob,edge_pts,would_fill,would_avg_price
+2026-11-18 22:44:30,KXBTC15M-26NOV181745-45,NO,30,0.79,0.76,3c,0.8932,9.16,20,0.79
