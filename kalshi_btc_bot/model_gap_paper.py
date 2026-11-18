@@ -183,7 +183,7 @@ class ModelGapPaper(SqueezePaper):
 
     def on_second(self, t: int, price: float):
         m = self._market(self.wall())
-        if not m or not m["open_ts"] <= t < m["close_ts"] or m["ticker"] in self.looked:
+        if not m or not m["open_ts"] <= t < m["close_ts"] or (m["ticker"] in self.looked and not self.LOG_AFTER_LOOK):
             return
         k, r = divmod(t - m["open_ts"], 60)
         if r or k not in self.CHECKS:
@@ -224,27 +224,31 @@ class ModelGapPaper(SqueezePaper):
         ev = self._evaluate(f, p_yes, asks, hi, lo)
         ev["pre_hi"], ev["pre_lo"] = hi, lo
         side = ev["look"]
+        self._cur_extra = self._look_extra(t, m, ev)
         if side is None:
-            self._row(t, m, f, p_yes, ev, self.NO_LOOK)
+            self._row(t, m, f, p_yes, ev, self.NO_LOOK, **self._cur_extra)
+            return
+        if m["ticker"] in self.looked:       # a bot that keeps logging looks after its one trade
+            self._row(t, m, f, p_yes, ev, "log only: after the trade", **self._cur_extra)
             return
         self.looked.add(m["ticker"])
         self._save_state()
         if side not in self.TRADE_SIDES:
-            self._row(t, m, f, p_yes, ev, f"skip: {side.upper()} side is not in the rule")
+            self._row(t, m, f, p_yes, ev, f"skip: {side.upper()} side is not in the rule", **self._cur_extra)
             return
         if self.NEEDS_CONDITION and not ev["condition"]:
-            self._row(t, m, f, p_yes, ev, "skip: no cushion and no breakout")
+            self._row(t, m, f, p_yes, ev, "skip: no cushion and no breakout", **self._cur_extra)
             return
         prob = p_yes if side == "yes" else 1 - p_yes
         other = book.get("no_bids" if side == "yes" else "yes_bids") or []
         n, avg = fill(other, self.contracts, self._limit(prob, asks[side]))
         if not n:
-            self._row(t, m, f, p_yes, ev, self.NOTHING_TO_BUY)
+            self._row(t, m, f, p_yes, ev, self.NOTHING_TO_BUY, **self._cur_extra)
             return
         fee = kalshi_fee(n, avg)
         self.traded.add(m["close_ts"])
         self._save_state()
-        self._row(t, m, f, p_yes, ev, f"BUY {side.upper()}", contracts=n, avg_price=round(avg, 4))
+        self._row(t, m, f, p_yes, ev, f"BUY {side.upper()}", contracts=n, avg_price=round(avg, 4), **self._cur_extra)
         self.unsettled.append({"time_utc": _iso(t), "ticker": m["ticker"], "side": side.upper(),
                                "level": ("cushion" if ev["cushion"] is not None and ev["cushion"] > CUSHION_MIN else "breakout" if ev["breakout"] else "gap only"),
                                "secs_left": m["close_ts"] - t, "model_prob": round(prob, 4),
@@ -259,6 +263,10 @@ class ModelGapPaper(SqueezePaper):
     NO_LOOK = "no look (no side 70-99c with a 3-point gap)"
     NOTHING_TO_BUY = "skip: nothing to buy with a 3-point gap"
     TRADE_SIDES = TRADE_SIDES
+    LOG_AFTER_LOOK = False       # True: keep writing signal rows after the contract's one trade
+
+    def _look_extra(self, t, m, ev):
+        return {}
 
     def _evaluate(self, f, p_yes, asks, hi, lo):
         return evaluate(f, p_yes, asks, hi, lo, self.GAP)
@@ -383,6 +391,111 @@ class UnleashedGapPaper(ModelGapPaper):
 
     def _trade_extra(self, prob, avg):
         return {"pred_return_pct": round(100 * pred_return(prob, avg), 2)}
+
+
+# ----------------------------------------------------------------------------- Direct pocket ML
+POCKET_GAP = 0.05                # model chance minus ask, before the fee (the research "gap")
+POCKET_DEV = 0.10                # percent past the strike, on the side bought
+POCKET_CHECK_KS = range(1, 12)   # minute marks 1-11 after the open: 14 .. 4 minutes left
+PK_MIN, PK_MAX = 0.01, 0.99
+
+
+def pocket_dev(brti: float, strike: float, side: str) -> float:
+    """How far BRTI is past the strike on the side bought, in percent (positive = that side is winning)."""
+    return (1 if side == "yes" else -1) * (brti / strike - 1) * 100
+
+
+def evaluate_pocket(f: dict, p_yes: float, asks: dict, strike: float) -> dict:
+    """One minute check for the pocket rule: a side whose model chance beats its ask by 5 points and whose BRTI is
+    0.10% or more past the strike. Both cannot be true at once; if the data say so the bigger gap is the look."""
+    out = {"p_yes": p_yes, "look": None}
+    best = None
+    for side in ("yes", "no"):
+        lv = asks.get(side) or []
+        ask = lv[0][0] if lv else None
+        prob = p_yes if side == "yes" else 1 - p_yes
+        ok = ask is not None and PK_MIN <= ask <= PK_MAX
+        out[f"{side}_ask"] = ask
+        out[f"{side}_gap"] = (prob - ask) if ok else None
+        dev = pocket_dev(f["brti"], strike, side)
+        out[f"{side}_dev"] = dev
+        if ok and prob - ask >= POCKET_GAP and dev >= POCKET_DEV and (best is None or prob - ask > best[1]):
+            best = (side, prob - ask)
+    out["look"] = best[0] if best else None
+    out["cushion"] = out["breakout"] = None
+    out["condition"] = False
+    return out
+
+
+def limit_pocket(prob_side: float, levels: list[list[float]]) -> float:
+    """Highest book price that still leaves a gap of at least 5 points."""
+    lim = 0.0
+    for p, _ in levels:
+        if PK_MIN <= p <= PK_MAX and prob_side - p >= POCKET_GAP:
+            lim = max(lim, p)
+    return lim
+
+
+class PocketGapPaper(ModelGapPaper):
+    """"Direct pocket ML" (Michael 2026-11-17): the Direct ML model (BRTI inputs only), both sides, any price 1-99c, at
+    the minute marks from 14 down to 4 minutes left. A side is a look when its model chance beats the ask by 5 points
+    (before the fee) AND BRTI is 0.10% or more past the strike on that side. The first look per contract is the one
+    trade: 20 contracts at the ask (walking the book while the gap stays at 5 points), held to settlement.
+    Every later look is logged without trading, with its look number and consecutive-minute run length, so the
+    third-consecutive-look variant can be judged from signals.csv.
+    Backtest (research/unleashed/, trade-print asks, win % vs price after fee, avg c / median c; first look per contract):
+      Mar-Aug (monthly out-of-fold): 2,139 trades, 82% vs 78c, +3.0c / +17.0c (YES +3.9, NO +2.2)
+      Sep-Oct (frozen fit):            710 trades, 85% vs 80c, +4.2c / +16.0c (YES +4.7, NO +3.8)
+      third consecutive qualifying minute: Mar-Aug 385 trades +5.2c, Sep-Oct 172 trades +6.9c
+    The pocket was found by scanning the same data, so neither period is a clean test. A 1c worse fill takes about 1c
+    off. Retire at 300 trades under +1c (docs/paper_test_decision_rule.md)."""
+    BOT = "Direct pocket"
+    MODEL_FILE = "model_gap_direct.json"
+    CHECKS = POCKET_CHECK_KS
+    USES_KALSHI = False
+    NEEDS_CONDITION = False
+    TRADE_SIDES = ("yes", "no")
+    LOG_AFTER_LOOK = True
+    NO_LOOK = "no look (no side 5 points over its ask and 0.10% past the strike)"
+    NOTHING_TO_BUY = "skip: nothing to buy at a 5-point gap"
+
+    def __init__(self, *a, **kw):
+        self._runs: dict[str, dict] = {}       # ticker -> {"looks": n, "last_k": k, "run": consecutive minutes, "side": s}
+        self._cur_extra: dict = {}
+        super().__init__(*a, **kw)
+
+    def _evaluate(self, f, p_yes, asks, hi, lo):
+        return evaluate_pocket(f, p_yes, asks, self._strike)
+
+    def check(self, t, m):
+        self._strike = m["strike"]
+        super().check(t, m)
+
+    def _look_extra(self, t, m, ev):
+        side = ev.get("look")
+        if side is None:
+            return {}
+        k = (t - m["open_ts"]) // 60
+        r = self._runs.get(m["ticker"], {"looks": 0, "last_k": -9, "run": 0, "side": None})
+        run = r["run"] + 1 if (r["last_k"] == k - 1 and r["side"] == side) else 1
+        r = {"looks": r["looks"] + 1, "last_k": k, "run": run, "side": side}
+        self._runs = {m["ticker"]: r}          # one contract at a time
+        return {"look_no": r["looks"], "run_no": r["run"]}
+
+    def _limit(self, prob, levels):
+        return limit_pocket(prob, levels)
+
+    def _trade_extra(self, prob, avg):
+        return dict(self._cur_extra)
+
+    def _row(self, t, m, f, p_yes, ev, decision, **extra):
+        side = (ev or {}).get("look")
+        dev = "" if not side else round(ev[f"{side}_dev"], 4)
+        super()._row(t, m, f, p_yes, ev, decision, **{"look_no": "", "run_no": "", "dev_pct": dev, **extra})
+
+
+def pocket_from_env(out: str, push_logs: bool, contracts: int = CONTRACTS) -> PocketGapPaper:
+    return PocketGapPaper(out, os.environ.get("KALSHI_KEY_ID"), os.environ.get("KALSHI_KEY_FILE"), push_logs, contracts)
 
 
 def unleashed_from_env(out: str, push_logs: bool, contracts: int = CONTRACTS) -> UnleashedGapPaper:

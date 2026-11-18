@@ -242,3 +242,58 @@ def test_unleashed_bot_checks_to_one_minute_left_and_waits_without_5pct(tmp_path
     rows = (tmp_path / "signals.csv").read_text().splitlines()[1:]
     assert len(rows) == 14 and all("no look" in r for r in rows) and rows[-1].split(",")[3] == "60"
     assert not bot.unsettled
+
+
+# ----------------------------------------------------------------------------- Direct pocket ML bot
+from kalshi_btc_bot.model_gap_paper import PocketGapPaper, evaluate_pocket, limit_pocket, pocket_dev  # noqa: E402
+
+
+def test_pocket_dev_is_percent_past_strike_on_the_side_bought():
+    assert abs(pocket_dev(1001.0, 1000.0, "yes") - 0.1) < 1e-9
+    assert abs(pocket_dev(999.0, 1000.0, "no") - 0.1) < 1e-9
+    assert pocket_dev(999.0, 1000.0, "yes") < 0
+
+
+def test_evaluate_pocket_needs_gap_and_deviation():
+    asks = {"yes": [[0.82, 50]], "no": [[0.20, 50]]}
+    ev = evaluate_pocket({"brti": 1002.0}, 0.90, asks, 1000.0)           # YES: gap 8 pts, 0.2% past the strike
+    assert ev["look"] == "yes" and abs(ev["yes_gap"] - 0.08) < 1e-12
+    assert evaluate_pocket({"brti": 1000.5}, 0.90, asks, 1000.0)["look"] is None      # only 0.05% past the strike
+    assert evaluate_pocket({"brti": 1002.0}, 0.86, asks, 1000.0)["look"] is None      # gap 4 pts
+    ev = evaluate_pocket({"brti": 998.0}, 0.10, {"yes": [[0.18, 5]], "no": [[0.80, 5]]}, 1000.0)   # NO: 0.90 vs 0.80
+    assert ev["look"] == "no"
+    assert evaluate_pocket({"brti": 1002.0}, 0.90, {"yes": [], "no": []}, 1000.0)["look"] is None
+    assert evaluate_pocket({"brti": 1002.0}, 0.999, {"yes": [[0.995, 5]], "no": []}, 1000.0)["look"] is None   # above 99c
+
+
+def test_limit_pocket_walks_levels_while_5_points_hold():
+    lv = [[0.80, 5], [0.84, 50], [0.86, 50]]
+    assert limit_pocket(0.90, lv) == 0.84 and limit_pocket(0.92, lv) == 0.86
+    assert limit_pocket(0.84, lv) == 0.0
+
+
+def test_pocket_bot_buys_first_look_and_logs_later_looks(tmp_path):
+    bot = PocketGapPaper(tmp_path, model=Stub(0.95))
+    bot.k = FakeKalshi([[0.80, 500.0]], [[0.18, 500.0]], result="yes")   # YES ask 0.82
+    _run(bot, S + 300, price_after_open=1005.0)                          # 0.5% past the strike: every minute is a look
+    rows = (tmp_path / "signals.csv").read_text().splitlines()
+    head = rows[0].split(",")
+    assert "BUY YES" in rows[1] and len(bot.unsettled) == 1
+    assert "look_no" in head and "run_no" in head and "dev_pct" in head
+    cols = lambda r: dict(zip(head, r.split(",")))
+    assert cols(rows[1])["look_no"] == "1" and cols(rows[1])["run_no"] == "1"
+    assert "log only" in rows[2] and cols(rows[2])["look_no"] == "2" and cols(rows[2])["run_no"] == "2"
+    assert cols(rows[3])["look_no"] == "3" and cols(rows[3])["run_no"] == "3"
+    tr = bot.unsettled[0]
+    assert tr["side"] == "YES" and tr["contracts"] == 20 and abs(tr["avg_price"] - 0.82) < 1e-9 and tr["secs_left"] == 840
+    bot.settle(S + 1000)
+    assert ",yes,1," in (tmp_path / "trades.csv").read_text().splitlines()[1]
+
+
+def test_pocket_bot_waits_for_deviation_and_stops_at_4_minutes_left(tmp_path):
+    bot = PocketGapPaper(tmp_path, model=Stub(0.95))
+    bot.k = FakeKalshi([[0.80, 500.0]], [[0.18, 500.0]])
+    _run(bot, S + 840, price_after_open=1000.5)                          # only 0.05% past the strike: never a look
+    rows = (tmp_path / "signals.csv").read_text().splitlines()[1:]
+    assert len(rows) == 11 and all("no look" in r for r in rows) and rows[-1].split(",")[3] == "240"   # last check: 4 min left
+    assert not bot.unsettled

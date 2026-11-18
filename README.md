@@ -90,6 +90,19 @@ check), `trades.csv` (with `pred_return_pct`), `open_trades.json`, `status.json`
 python -m kalshi_btc_bot paper-unleashed --out runs/unleashed --contracts 20
 ```
 
+### Direct pocket ML paper trader
+
+`paper-pocket` runs the Direct ML model (BRTI inputs only) on both sides, any ask from 1c to 99c, at the minute marks from
+14 down to 4 minutes left. A side is a look when the model's chance beats its ask by at least 5 points (before the fee) and
+BRTI is at least 0.10% past the strike on that side; first look per contract is the one trade, 20 contracts, held to
+settlement. Paper only. Later looks are logged with `look_no`, `run_no` and `dev_pct` in `signals.csv` so the
+third-consecutive-look variant can be judged. Shown on the ML models page. Backtest and decision rule:
+`docs/paper_test_decision_rule.md`, scripts in `research/unleashed/` (`pocket_looks.py`).
+
+```bash
+python -m kalshi_btc_bot paper-pocket --out runs/pocket --contracts 20
+```
+
 ## How the spec maps to the code
 
 | Spec section | Code |

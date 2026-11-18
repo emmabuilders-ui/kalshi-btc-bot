@@ -143,6 +143,12 @@ def main(argv=None) -> None:
     ux.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
     ux.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
 
+    pk = sub.add_parser("paper-pocket", help="paper trade Direct pocket ML on the 15-min markets (YES or NO, model 5 points over the ask and BRTI 0.10% past the strike, 14-4 min left; no orders are sent)")
+    pk.add_argument("--out", default="runs/pocket")
+    pk.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
+    pk.add_argument("--push-logs", action="store_true", help="git commit and push --out every hour")
+    pk.add_argument("--minutes", type=float, help="stop after this many minutes (default: run forever)")
+
     lk = sub.add_parser("paper-lockin", help="paper trade the last-minute lock-in rule on the 15-min BTC markets (10-50 s left, settlement-aware edge >= 5 pts; no orders are sent)")
     lk.add_argument("--out", default="runs/lockin")
     lk.add_argument("--contracts", type=int, default=20, help="contracts per paper trade")
@@ -179,6 +185,7 @@ def main(argv=None) -> None:
     d.add_argument("--coinbreak", default="/opt/kalshi-logs-coinbreak/coinbreak")
     d.add_argument("--lockin", default="/opt/kalshi-logs-lockin/lockin")
     d.add_argument("--unleashed", default="/opt/kalshi-logs-unleashed/unleashed")
+    d.add_argument("--pocket", default="/opt/kalshi-logs-pocket/pocket")
 
     t = sub.add_parser("touch", help="chance price touches a target within N bars (live Coinbase prices)")
     t.add_argument("coin", help="BTC, ETH or SOL")
@@ -271,6 +278,9 @@ def main(argv=None) -> None:
     elif a.cmd == "paper-unleashed":
         from .model_gap_paper import unleashed_from_env
         unleashed_from_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
+    elif a.cmd == "paper-pocket":
+        from .model_gap_paper import pocket_from_env
+        pocket_from_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
     elif a.cmd == "paper-lockin":
         from .lockin_paper import from_env as lk_env
         lk_env(a.out, a.push_logs, a.contracts).run(a.minutes * 60 if a.minutes else None)
@@ -288,7 +298,7 @@ def main(argv=None) -> None:
                "squeeze": Path(a.squeeze), "squeeze_maker": Path(a.squeeze_maker),
                "model_gap": Path(a.model_gap), "corr_gap": Path(a.corr_gap), "longshot": Path(a.longshot), "bandml": Path(a.bandml),
                "fivepm": Path(a.fivepm), "coinbreak": Path(a.coinbreak), "lockin": Path(a.lockin),
-               "unleashed": Path(a.unleashed)})
+               "unleashed": Path(a.unleashed), "pocket": Path(a.pocket)})
     elif a.cmd == "touch":
         from .touch_prob import run_cli
         run_cli(a.coin, a.tf, a.bars, a.target)
