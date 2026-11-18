@@ -5068,3 +5068,21 @@ break_utc,session,side,level,level_price,secs_left,brti,push,lag_s,decision
 2026-11-18 19:45:35,KXBTC15M-26NOV181500-00,NO,prev60_low,62607.72,864,62600.95,0.58,1.3,skip: outside 60-150 s window
 2026-11-18 19:57:43,KXBTC15M-26NOV181500-00,YES,hard_high,62686.69,136,62696.24,2.69,3.1,"skip: push stayed inside 62,600-62,700 (BRTI 62647.81 -> 62696.24)"
 2026-11-18 20:06:59,KXBTC15M-26NOV181515-15,YES,hard_high,62687.85,480,62701.04,2.0,15.0,skip: not the last 15 minutes of the hour
+2026-11-18 20:09:25,KXBTC15M-26NOV181515-15,NO,hard_low,62613.64,334,62602.82,2.16,3.2,skip: not the last 15 minutes of the hour
+2026-11-18 20:20:53,KXBTC15M-26NOV181530-30,NO,hard_low,62613.77,546,62606.87,2.84,1.3,skip: not the last 15 minutes of the hour
+2026-11-18 20:21:14,KXBTC15M-26NOV181530-30,NO,prev15_low,62599.17,525,62592.55,0.89,0.9,skip: not the last 15 minutes of the hour
+2026-11-18 20:23:15,KXBTC15M-26NOV181530-30,NO,prev60_low,62496.04,404,62489.43,1.8,11.6,skip: not the last 15 minutes of the hour
+2026-11-18 20:23:15,KXBTC15M-26NOV181530-30,NO,round500_low,62500.0,404,62489.43,1.8,11.6,skip: not the last 15 minutes of the hour
+2026-11-18 20:30:55,KXBTC15M-26NOV181545-45,YES,round500_high,62500.0,844,62505.04,0.35,1.2,skip: not the last 15 minutes of the hour
+2026-11-18 20:32:55,KXBTC15M-26NOV181545-45,YES,hard_high,62523.74,724,62548.47,1.54,14.0,skip: not the last 15 minutes of the hour
+2026-11-18 20:42:08,KXBTC15M-26NOV181545-45,NO,hard_low,62447.6,171,62441.26,1.85,0.7,skip: not the last 15 minutes of the hour
+2026-11-18 20:42:12,KXBTC15M-26NOV181545-45,NO,prev15_low,62440.75,167,62435.64,1.93,0.7,skip: not the last 15 minutes of the hour
+2026-11-18 20:42:12,KXBTC15M-26NOV181545-45,NO,prev60_low,62440.75,167,62435.64,1.93,0.7,skip: not the last 15 minutes of the hour
+2026-11-18 20:45:21,KXBTC15M-26NOV181600-00,NO,prev15_low,62430.33,878,62414.36,2.46,0.8,skip: outside 60-150 s window
+2026-11-18 20:45:21,KXBTC15M-26NOV181600-00,NO,prev60_low,62430.33,878,62414.36,2.46,0.8,skip: outside 60-150 s window
+2026-11-18 20:47:47,KXBTC15M-26NOV181600-00,NO,pivot_R2S2_low,62392.68,732,62382.39,1.07,0.8,skip: outside 60-150 s window
+2026-11-18 20:47:48,KXBTC15M-26NOV181600-00,NO,hard_low,62385.29,731,62378.42,1.37,0.7,skip: outside 60-150 s window
+2026-11-18 20:53:48,KXBTC15M-26NOV181600-00,YES,hard_high,62494.87,371,62502.1,1.82,1.5,skip: outside 60-150 s window
+2026-11-18 20:54:08,KXBTC15M-26NOV181600-00,YES,round500_high,62500.0,351,62509.15,0.45,4.3,skip: outside 60-150 s window
+2026-11-18 21:03:34,KXBTC15M-26NOV181615-15,NO,round500_low,62500.0,685,62489.98,1.34,7.8,skip: not the last 15 minutes of the hour
+2026-11-18 21:03:37,KXBTC15M-26NOV181615-15,NO,hard_low,62494.87,682,62487.72,1.07,4.8,skip: not the last 15 minutes of the hour
