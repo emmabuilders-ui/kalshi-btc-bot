@@ -221,15 +221,15 @@ class ModelGapPaper(SqueezePaper):
             return
         asks = book_asks(book)
         hi, lo = self._pre_levels(m)
-        ev = evaluate(f, p_yes, asks, hi, lo, self.GAP)
+        ev = self._evaluate(f, p_yes, asks, hi, lo)
         ev["pre_hi"], ev["pre_lo"] = hi, lo
         side = ev["look"]
         if side is None:
-            self._row(t, m, f, p_yes, ev, f"no look (no side 70-99c with a {100 * self.GAP:g}-point gap)")
+            self._row(t, m, f, p_yes, ev, self.NO_LOOK)
             return
         self.looked.add(m["ticker"])
         self._save_state()
-        if side not in TRADE_SIDES:
+        if side not in self.TRADE_SIDES:
             self._row(t, m, f, p_yes, ev, f"skip: {side.upper()} side is not in the rule")
             return
         if self.NEEDS_CONDITION and not ev["condition"]:
@@ -237,22 +237,37 @@ class ModelGapPaper(SqueezePaper):
             return
         prob = p_yes if side == "yes" else 1 - p_yes
         other = book.get("no_bids" if side == "yes" else "yes_bids") or []
-        n, avg = fill(other, self.contracts, limit_price(prob, asks[side], self.GAP))
+        n, avg = fill(other, self.contracts, self._limit(prob, asks[side]))
         if not n:
-            self._row(t, m, f, p_yes, ev, f"skip: nothing to buy with a {100 * self.GAP:g}-point gap")
+            self._row(t, m, f, p_yes, ev, self.NOTHING_TO_BUY)
             return
         fee = kalshi_fee(n, avg)
         self.traded.add(m["close_ts"])
         self._save_state()
         self._row(t, m, f, p_yes, ev, f"BUY {side.upper()}", contracts=n, avg_price=round(avg, 4))
         self.unsettled.append({"time_utc": _iso(t), "ticker": m["ticker"], "side": side.upper(),
-                               "level": ("cushion" if ev["cushion"] > CUSHION_MIN else "breakout" if ev["breakout"] else "gap only"),
+                               "level": ("cushion" if ev["cushion"] is not None and ev["cushion"] > CUSHION_MIN else "breakout" if ev["breakout"] else "gap only"),
                                "secs_left": m["close_ts"] - t, "model_prob": round(prob, 4),
                                "gap_pts": round(100 * gap(prob, avg), 2), "contracts": n, "avg_price": round(avg, 4),
                                "fee": fee, "cost": round(n * avg + fee, 2), "close_ts": m["close_ts"],
                                "result": "", "won": "", "pnl": ""})
+        self.unsettled[-1].update(self._trade_extra(prob, avg))
         self._save_open()
         log.info("PAPER BUY %d %s %s @ %.2f (model %.3f, fee %.2f)", n, side.upper(), m["ticker"], avg, prob, fee)
+
+    # hooks the Unleashed bot overrides; the defaults are the 3-point-gap rule
+    NO_LOOK = "no look (no side 70-99c with a 3-point gap)"
+    NOTHING_TO_BUY = "skip: nothing to buy with a 3-point gap"
+    TRADE_SIDES = TRADE_SIDES
+
+    def _evaluate(self, f, p_yes, asks, hi, lo):
+        return evaluate(f, p_yes, asks, hi, lo, self.GAP)
+
+    def _limit(self, prob, levels):
+        return limit_price(prob, levels, self.GAP)
+
+    def _trade_extra(self, prob, avg):
+        return {}
 
     def _row(self, t, m, f, p_yes, ev, decision, **extra):
         ev = ev or {}
@@ -296,6 +311,82 @@ class CorrectionGapPaper(ModelGapPaper):
     GAP = 0.03
     USES_KALSHI = True
     NEEDS_CONDITION = False
+
+
+# ----------------------------------------------------------------------------- Correction Unleashed ML
+MIN_RETURN = 0.05                # predicted return after the fee that a side must offer
+UNLEASHED_CHECK_KS = range(1, 15)   # minute marks 1-14 after the open: 14 .. 1 minutes left (the model's training range)
+UX_MIN, UX_MAX = 0.01, 0.99      # asks the bot will consider
+
+
+def pred_return(prob_side: float, price: float) -> float:
+    """(model chance of winning - cost) / cost, where cost = ask + taker fee per contract."""
+    cost = price + 0.07 * price * (1 - price)
+    return (prob_side - cost) / cost
+
+
+def evaluate_return(p_yes: float, asks: dict, min_ret: float = MIN_RETURN) -> dict:
+    """One minute check for the Unleashed rule: either side, any ask 1-99c, predicted return of at least min_ret.
+    If both sides qualify the one with the bigger predicted return is the look."""
+    out = {"p_yes": p_yes, "look": None}
+    best = None
+    for side in ("yes", "no"):
+        lv = asks.get(side) or []
+        ask = lv[0][0] if lv else None
+        prob = p_yes if side == "yes" else 1 - p_yes
+        ok = ask is not None and UX_MIN <= ask <= UX_MAX
+        out[f"{side}_ask"] = ask
+        out[f"{side}_gap"] = gap(prob, ask) if ok else None
+        out[f"{side}_ret"] = pred_return(prob, ask) if ok else None
+        if ok and out[f"{side}_ret"] >= min_ret and (best is None or out[f"{side}_ret"] > best[1]):
+            best = (side, out[f"{side}_ret"])
+    out["look"] = best[0] if best else None
+    out["cushion"] = out["breakout"] = None
+    out["condition"] = False
+    return out
+
+
+def limit_return(prob_side: float, levels: list[list[float]], min_ret: float = MIN_RETURN) -> float:
+    """Highest book price that still offers a predicted return of at least min_ret."""
+    lim = 0.0
+    for p, _ in levels:
+        if UX_MIN <= p <= UX_MAX and pred_return(prob_side, p) >= min_ret:
+            lim = max(lim, p)
+    return lim
+
+
+class UnleashedGapPaper(ModelGapPaper):
+    """"Correction Unleashed ML" (Michael 2026-11-17): the Correction ML model with the NO-only, 70-99c and 6-14 minute
+    limits taken off. At each minute mark from 14 down to 1 minute left it buys, YES or NO, at any ask from 1 to 99c, when
+    (model chance - ask - fee) / (ask + fee) is at least 5%. First qualifying minute per contract is the one look;
+    20 contracts at the ask (walking the book only while the predicted return stays at 5%), held to settlement.
+    Same frozen Dec-Aug model as the Correction ML bot (data/model_gap_correction.json), trained on 14..1 minutes left.
+    Backtest (research/unleashed/, one trade per contract, trade-print asks; win % vs price, after fee):
+      Mar-Aug (monthly out-of-fold): 15,808 trades, 46.4% vs 46.1c, -1.25c per contract
+      Sep-Oct (frozen fit):           4,239 trades, 46.7% vs 44.7c, +0.66c per contract (standard error 0.68c)
+    The rule does not clear the +1c bar in backtest; the paper test is the check. Retire at 300 trades under +1c
+    (docs/paper_test_decision_rule.md)."""
+    BOT = "Correction Unleashed"
+    MODEL_FILE = "model_gap_correction.json"
+    CHECKS = UNLEASHED_CHECK_KS
+    USES_KALSHI = True
+    NEEDS_CONDITION = False
+    TRADE_SIDES = ("yes", "no")
+    NO_LOOK = "no look (no side with a 5% predicted return)"
+    NOTHING_TO_BUY = "skip: nothing to buy at a 5% predicted return"
+
+    def _evaluate(self, f, p_yes, asks, hi, lo):
+        return evaluate_return(p_yes, asks)
+
+    def _limit(self, prob, levels):
+        return limit_return(prob, levels)
+
+    def _trade_extra(self, prob, avg):
+        return {"pred_return_pct": round(100 * pred_return(prob, avg), 2)}
+
+
+def unleashed_from_env(out: str, push_logs: bool, contracts: int = CONTRACTS) -> UnleashedGapPaper:
+    return UnleashedGapPaper(out, os.environ.get("KALSHI_KEY_ID"), os.environ.get("KALSHI_KEY_FILE"), push_logs, contracts)
 
 
 def corr_from_env(out: str, push_logs: bool, contracts: int = CONTRACTS) -> CorrectionGapPaper:

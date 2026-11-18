@@ -276,7 +276,7 @@ def history_events(L: dict[str, Path]) -> dict:
     buys = []
     for bot, key in (("Breakdown", "breakdown"), ("Fast push", "fastpush"), ("Squeeze", "squeeze"),
                      ("Squeeze maker", "squeeze_maker"), ("Model gap", "model_gap"), ("Correction ML", "corr_gap"),
-                     ("Longshot", "longshot"), ("Lock-in", "lockin")):
+                     ("Longshot", "longshot"), ("Lock-in", "lockin"), ("Correction Unleashed", "unleashed")):
         if key not in L:
             continue
         res = {(r.get("ticker"), r.get("side")): r for r in _rows(L[key] / "trades.csv")}
@@ -807,6 +807,7 @@ class Dashboard:
         fp5 = L.get("fivepm") or Path("/nonexistent")   # 5 PM ET daily/weekly range market, YES rule
         cbk = L.get("coinbreak") or Path("/nonexistent")   # ETH / SOL / XRP break-with-gate bot, one folder per coin
         lkn = L.get("lockin") or Path("/nonexistent")      # last-minute lock-in bot (15-min, 10-50 s left)
+        unl = L.get("unleashed") or Path("/nonexistent")   # Correction Unleashed ML (either side, any price, 5% predicted return)
         hour_close = (int(time.time()) // 3600 + 1) * 3600
         return {
             "now": time.time(), "prices": pts, "error": self.err, "hour_close": hour_close,
@@ -856,6 +857,7 @@ class Dashboard:
             "fivepm": settled_summary(_rows(fp5 / "trades.csv")),
             "coinbreak": {c: settled_summary(_rows(cbk / c / "trades.csv")) for c in COINBREAK},
             "lockin": settled_summary(_rows(lkn / "trades.csv")),
+            "unleashed": settled_summary(_rows(unl / "trades.csv")),
             "perf": self.perf(),
         }
 
@@ -867,7 +869,8 @@ class Dashboard:
             ("Trend tight", "trend_tight"), ("Maker (limit order)", "maker"), ("Quiet favorite", "quiet"),
             ("Squeeze", "squeeze"), ("Squeeze maker", "squeeze_maker"), ("Model gap (Direct ML, NO)", "model_gap"),
             ("Correction ML (NO)", "corr_gap"), ("Longshot (15c or less)", "longshot"),
-            ("Band ML (YES, 7-24 min)", "bandml"), ("5 PM range", "fivepm"), ("Lock-in (15-min, last 60 s)", "lockin"))]
+            ("Band ML (YES, 7-24 min)", "bandml"), ("5 PM range", "fivepm"), ("Lock-in (15-min, last 60 s)", "lockin"),
+            ("Correction Unleashed (either side, 5% return)", "unleashed"))]
         for c in COINBREAK:
             out.append(perf_row(f"Break + gate {c} (15-min)", _rows((L.get("coinbreak") or none) / c / "trades.csv")))
         if L.get("range5"):

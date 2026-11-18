@@ -12,6 +12,7 @@ from .dashboard import FILTER_CSS, FILTER_JS, _json, _num, _rows, perf_row
 MODEL_BOTS = {
     "model_gap": ("Direct ML", "NO 70–99¢, model ≥ 3 pts over ask + fee, 6–14 min left, cushion or breakout"),
     "corr_gap": ("Correction ML", "NO 70–99¢, model ≥ 3 pts over ask + fee, 6–14 min left, no other condition"),
+    "unleashed": ("Correction Unleashed", "YES or NO, any price 1–99¢, 14–1 min left, model-predicted return ≥ 5% after fee, no other condition"),
     "bandml": ("Band ML", "YES on hourly range bands, 7–24 min left, BTC inside the band, model ≥ 5 pts over ask + fee, 10 contracts"),
     "longshot": ("Longshot", "near-strike fair value at least 8¢ over price + fee, price 15¢ or less"),
 }
@@ -45,7 +46,7 @@ def models_data(logs: dict[str, Path]) -> dict:
         perf.append(perf_row(name, _rows(d / "trades.csv")))
         trades += tr
         opened += op
-        for r in (sig[-CHECK_ROWS:] if key in ("model_gap", "corr_gap") else []):   # the other bots log different columns
+        for r in (sig[-CHECK_ROWS:] if key in ("model_gap", "corr_gap", "unleashed") else []):   # the other bots log different columns
             checks.append({"bot": name, "time_utc": r.get("time_utc"), "min_left": _num(r.get("min_left")),
                            "p_yes": _num(r.get("model_p_yes")), "yes_ask": _num(r.get("yes_ask")), "no_ask": _num(r.get("no_ask")),
                            "yes_gap": _num(r.get("yes_gap_pts")), "no_gap": _num(r.get("no_gap_pts")),

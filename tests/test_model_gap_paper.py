@@ -187,3 +187,58 @@ def test_frozen_correction_model_matches_reference():
     assert len(m.trees) == 250 and m.features[-3:] == ["x", "spread", "log_cumvol"]
     f = dict(F0, x=-2.0, spread=0.01, log_cumvol=12.0)
     assert abs(m.predict(f) - 0.09095584151255706) < 1e-12
+
+
+# ----------------------------------------------------------------------------- Correction Unleashed ML bot
+from kalshi_btc_bot.model_gap_paper import (UnleashedGapPaper, evaluate_return, limit_return,  # noqa: E402
+                                            pred_return)
+
+
+def test_pred_return_is_gap_over_cost():
+    p = 0.60
+    cost = 0.50 + 0.07 * 0.5 * 0.5
+    assert abs(pred_return(p, 0.50) - (p - cost) / cost) < 1e-12
+    assert abs(pred_return(0.526, 0.50) - (0.526 - 0.5175) / 0.5175) < 1e-12
+
+
+def test_evaluate_return_any_side_any_price():
+    asks = {"yes": [[0.10, 50]], "no": [[0.92, 50]]}
+    ev = evaluate_return(0.12, asks)                     # YES: cost 0.1063, return 12.9%: qualifies at 10c
+    assert ev["look"] == "yes" and ev["yes_ret"] > 0.05 and ev["no_ret"] < 0.05
+    asks = {"yes": [[0.55, 50]], "no": [[0.47, 50]]}
+    assert evaluate_return(0.30, asks)["look"] == "no"   # NO 0.70 vs cost 0.4876: qualifies at 47c
+    assert evaluate_return(0.55, asks)["look"] is None   # near fair: no side has 5%
+    both = {"yes": [[0.30, 5]], "no": [[0.30, 5]]}       # crossed stub quotes: the bigger return wins
+    assert evaluate_return(0.60, both)["look"] == "yes"
+    assert evaluate_return(0.60, {"yes": [[0.995, 5]], "no": []})["look"] is None   # above 99c
+    assert evaluate_return(0.5, {"yes": [], "no": []})["look"] is None
+
+
+def test_limit_return_walks_levels_while_5pct_holds():
+    lv = [[0.40, 5], [0.45, 50], [0.50, 50]]
+    assert limit_return(0.56, lv) == 0.50 and pred_return(0.56, 0.50) >= 0.05   # every level still has 5%
+    assert limit_return(0.43, lv) == 0.0                                       # no level offers 5%
+    assert limit_return(0.50, lv) == 0.45 and pred_return(0.50, 0.50) < 0.05   # stops before the 50c level
+
+
+def test_unleashed_bot_buys_yes_at_any_price(tmp_path):
+    bot = UnleashedGapPaper(tmp_path, model=SeesKalshi(0.40))          # YES ask 0.30: return about 29%
+    bot.k = FakeKalshiVol([[0.28, 500.0]], [[0.68, 500.0]], result="yes")
+    _run(bot, S + 120, price_after_open=1000.0)
+    rows = (tmp_path / "signals.csv").read_text().splitlines()
+    assert "BUY YES" in rows[1] and bot.k.calls == 1
+    tr = bot.unsettled[0]
+    assert tr["side"] == "YES" and tr["contracts"] == 20 and abs(tr["avg_price"] - 0.32) < 1e-9 and tr["secs_left"] == 840
+    assert tr["pred_return_pct"] > 5
+    bot.settle(S + 1000)
+    out = (tmp_path / "trades.csv").read_text().splitlines()
+    assert ",yes,1," in out[1]
+
+
+def test_unleashed_bot_checks_to_one_minute_left_and_waits_without_5pct(tmp_path):
+    bot = UnleashedGapPaper(tmp_path, model=SeesKalshi(0.50))          # no 5% anywhere: keeps checking each minute
+    bot.k = FakeKalshiVol([[0.48, 500.0]], [[0.48, 500.0]])
+    _run(bot, S + 840, price_after_open=1000.0)
+    rows = (tmp_path / "signals.csv").read_text().splitlines()[1:]
+    assert len(rows) == 14 and all("no look" in r for r in rows) and rows[-1].split(",")[3] == "60"
+    assert not bot.unsettled

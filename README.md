@@ -78,6 +78,18 @@ dashboard shows it at `/<token>/lockin/`. Decision rule: `docs/paper_test_decisi
 python -m kalshi_btc_bot paper-lockin --out runs/lockin --contracts 20
 ```
 
+### Correction Unleashed ML paper trader
+
+`paper-unleashed` runs the Correction ML model of `paper-corr-gap` without its limits: at each minute mark from 14 down to
+1 minute left it buys YES or NO at any ask from 1c to 99c when (model chance minus ask minus fee) / (ask plus fee) is at
+least 5%; first qualifying minute per contract, 20 contracts, held to settlement. Paper only. Logs: `signals.csv` (every
+check), `trades.csv` (with `pred_return_pct`), `open_trades.json`, `status.json`. Shown on the ML models page at
+`/<token>/models/`. Backtest and decision rule: `docs/paper_test_decision_rule.md`, scripts in `research/unleashed/`.
+
+```bash
+python -m kalshi_btc_bot paper-unleashed --out runs/unleashed --contracts 20
+```
+
 ## How the spec maps to the code
 
 | Spec section | Code |

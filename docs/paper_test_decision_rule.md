@@ -132,3 +132,34 @@ at these prices, so the standard error is roughly 40c/sqrt(n).
 - No changes to the margin, the seconds grid, the 4-second lag limit or the spread skip during the test. A condition added
   later from signals.csv or skips.csv counts only on data after the day it was coded.
 - No new scans of Dec-Oct to rescue the bot. Live trading stays locked off.
+
+## Correction Unleashed ML bot (`kalshi-unleashed`), added 2026-11-17
+
+Rule: the Correction ML model of `kalshi-corr-gap` with its limits taken off. At each minute mark from 14 down to 1 minute
+left on the 15-minute BTC markets, buy YES or NO at any ask from 1c to 99c when (model chance of winning minus ask minus
+taker fee) divided by (ask plus fee) is at least 5%. If both sides qualify, the bigger predicted return. First qualifying
+minute per contract is the one look. 20 contracts at the ask (walking the book only while the predicted return stays at
+5%), held to settlement. Paper only. Live trading stays locked off, no loss limits. The model is the same frozen Dec-Aug
+fit (`data/model_gap_correction.json`), trained on 14 to 1 minutes left, so the bot does not act in the last minute.
+
+Backtest (research/unleashed/, one trade per contract, trade-print asks, after fee, win % vs average price):
+
+| Period | Trades | Win % vs price | After fee |
+|---|---|---|---|
+| Mar-Aug (monthly out-of-fold model) | 15,808 | 46.4 vs 46.1 | -1.25c |
+| Sep-Oct (frozen model, the only period it has not seen) | 4,239 | 46.7 vs 44.7 | +0.66c (standard error 0.68c) |
+
+The model does not beat Kalshi's price on Brier score (x1000, worse by +2.06 Mar-Aug and +1.17 Sep-Oct). Asks of 70c and up were
+the only slice positive in both periods (+0.6c, +3.7c). That cut was found after seeing the data and is NOT part of the rule.
+
+Decision, fixed before the first paper trade and not to be changed afterwards. Judge on paper fills only, by win % minus
+average price paid after the fee, with the win % always shown beside the price. Per-trade standard deviation is about 45c,
+so the standard error is roughly 45c/sqrt(n).
+
+- At 300 trades (about 1 to 2 weeks at 20 to 30 trades a day, standard error about 2.6c): edge under +1.0c retires the bot.
+- At 800 trades (standard error about 1.6c): +2.4c or more with t at least 2 may be considered for small real size, which is
+  Michael's call alone; under +1.0c retires it; in between runs on to 1,300 trades.
+- Report the edge at the logged fills and again with each fill 1c worse, by side, by 10c price bucket and by minutes left.
+- No change to the 5% threshold, the 1-99c range, the minutes checked, the sides or the model during the test. A condition
+  added later from signals.csv counts only on data after the day it was coded.
+- No new scans of Mar-Oct to rescue the bot. Live trading stays locked off.
