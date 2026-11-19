@@ -1,74 +1,38 @@
 [
  {
-  "time_utc": "2026-11-19 14:30:00",
-  "ticker": "KXBTC-26NOV1910-B64150",
-  "side": "NO",
-  "mins_left": 30,
-  "contracts": 20,
-  "avg_price": 0.92,
-  "fee": 0.11,
-  "cost": 18.51,
-  "model": 0.9531,
-  "close_ts": 1795100400
- },
- {
-  "time_utc": "2026-11-19 14:30:00",
-  "ticker": "KXBTC-26NOV1910-B64250",
-  "side": "NO",
-  "mins_left": 30,
-  "contracts": 20,
-  "avg_price": 0.96,
-  "fee": 0.06,
-  "cost": 19.26,
-  "model": 0.9829,
-  "close_ts": 1795100400
- },
- {
-  "time_utc": "2026-11-19 14:33:00",
-  "ticker": "KXBTC-26NOV1910-B63550",
-  "side": "NO",
-  "mins_left": 27,
-  "contracts": 20,
-  "avg_price": 0.94,
-  "fee": 0.08,
-  "cost": 18.88,
-  "model": 0.9752,
-  "close_ts": 1795100400
- },
- {
-  "time_utc": "2026-11-19 14:38:00",
-  "ticker": "KXBTC-26NOV1910-B63450",
-  "side": "NO",
-  "mins_left": 22,
-  "contracts": 20,
-  "avg_price": 0.96,
-  "fee": 0.06,
-  "cost": 19.26,
-  "model": 0.9887,
-  "close_ts": 1795100400
- },
- {
-  "time_utc": "2026-11-19 14:39:00",
-  "ticker": "KXBTC-26NOV1910-B63650",
+  "time_utc": "2026-11-19 15:39:00",
+  "ticker": "KXBTC-26NOV1911-B63250",
   "side": "NO",
   "mins_left": 21,
   "contracts": 20,
-  "avg_price": 0.9,
-  "fee": 0.13,
-  "cost": 18.13,
-  "model": 0.9436,
-  "close_ts": 1795100400
+  "avg_price": 0.95,
+  "fee": 0.07,
+  "cost": 19.07,
+  "model": 0.9719,
+  "close_ts": 1795104000
  },
  {
-  "time_utc": "2026-11-19 14:41:00",
-  "ticker": "KXBTC-26NOV1910-B64050",
+  "time_utc": "2026-11-19 15:51:00",
+  "ticker": "KXBTC-26NOV1911-B63150",
   "side": "NO",
-  "mins_left": 19,
+  "mins_left": 9,
   "contracts": 20,
-  "avg_price": 0.9,
-  "fee": 0.13,
-  "cost": 18.13,
-  "model": 0.9511,
-  "close_ts": 1795100400
+  "avg_price": 0.95,
+  "fee": 0.07,
+  "cost": 19.07,
+  "model": 0.9731,
+  "close_ts": 1795104000
+ },
+ {
+  "time_utc": "2026-11-19 15:53:00",
+  "ticker": "KXBTC-26NOV1911-B63050",
+  "side": "NO",
+  "mins_left": 7,
+  "contracts": 20,
+  "avg_price": 0.89,
+  "fee": 0.14,
+  "cost": 17.94,
+  "model": 0.9249,
+  "close_ts": 1795104000
  }
 ]
