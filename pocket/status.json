@@ -1,9 +1,9 @@
 {
- "updated_utc": "2026-11-19T06:05:21+00:00",
- "settled_trades": 41,
- "wins": 32,
- "pnl_dollars": 13.68,
- "proxy_bias": -2.26,
+ "updated_utc": "2026-11-19T07:04:58+00:00",
+ "settled_trades": 44,
+ "wins": 34,
+ "pnl_dollars": 4.82,
+ "proxy_bias": -1.01,
  "session": null,
  "max_mem_mb": 117,
  "note": ""
