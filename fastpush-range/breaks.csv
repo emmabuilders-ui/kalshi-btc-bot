@@ -5752,3 +5752,31 @@ break_utc,session,side,level,level_price,secs_left,brti,push,lag_s,decision
 2026-11-20 13:51:55,KXBTC15M-26NOV200900-00,YES,day_open_high,61918.74,484,61924.41,1.26,1.9,skip: outside 60-150 s window
 2026-11-20 14:00:52,KXBTC15M-26NOV200915-15,YES,hard_high,61833.16,847,61838.95,0.24,4.2,skip: not the last 15 minutes of the hour
 2026-11-20 14:03:58,KXBTC15M-26NOV200915-15,NO,hard_low,61792.74,661,61786.81,0.54,4.1,skip: not the last 15 minutes of the hour
+2026-11-20 14:15:33,KXBTC15M-26NOV200930-30,NO,hard_low,61833.16,866,61821.16,2.08,23.1,skip: not the last 15 minutes of the hour
+2026-11-20 14:21:20,KXBTC15M-26NOV200930-30,YES,hard_high,61880.79,519,61898.94,2.6,1.1,skip: not the last 15 minutes of the hour
+2026-11-20 14:21:48,KXBTC15M-26NOV200930-30,YES,prev15_high,61910.53,491,61919.03,1.72,1.2,skip: not the last 15 minutes of the hour
+2026-11-20 14:23:59,KXBTC15M-26NOV200930-30,YES,day_open_high,61918.74,360,61925.38,1.86,10.4,skip: not the last 15 minutes of the hour
+2026-11-20 14:24:01,KXBTC15M-26NOV200930-30,YES,prev60_high,61924.64,358,61929.69,1.57,8.4,skip: not the last 15 minutes of the hour
+2026-11-20 14:24:51,KXBTC15M-26NOV200930-30,YES,round1000_high,62000.0,308,62010.48,3.01,4.2,skip: not the last 15 minutes of the hour
+2026-11-20 14:24:51,KXBTC15M-26NOV200930-30,YES,round500_high,62000.0,308,62010.48,3.01,4.2,skip: not the last 15 minutes of the hour
+2026-11-20 14:30:05,KXBTC15M-26NOV200945-45,NO,hard_low,62000.96,894,61990.65,2.05,39.0,skip: not the last 15 minutes of the hour
+2026-11-20 14:30:05,KXBTC15M-26NOV200945-45,NO,round1000_low,62000.0,894,61990.65,2.05,39.0,skip: not the last 15 minutes of the hour
+2026-11-20 14:30:05,KXBTC15M-26NOV200945-45,NO,round500_low,62000.0,894,61990.65,2.05,39.0,skip: not the last 15 minutes of the hour
+2026-11-20 14:32:29,KXBTC15M-26NOV200945-45,NO,day_open_low,61918.74,750,61912.44,1.28,7.4,skip: not the last 15 minutes of the hour
+2026-11-20 14:33:59,KXBTC15M-26NOV200945-45,NO,prev15_low,61798.39,660,61788.61,2.16,13.2,skip: not the last 15 minutes of the hour
+2026-11-20 14:44:23,KXBTC15M-26NOV200945-45,NO,prevday_low,61366.53,36,61343.41,1.32,2.9,skip: not the last 15 minutes of the hour
+2026-11-20 14:45:04,KXBTC15M-26NOV201000-00,NO,hard_low,61363.42,895,61356.37,1.95,26.7,skip: outside 60-150 s window
+2026-11-20 14:45:04,KXBTC15M-26NOV201000-00,NO,prevday_low,61366.53,895,61356.37,1.95,26.7,skip: outside 60-150 s window
+2026-11-20 14:45:21,KXBTC15M-26NOV201000-00,YES,hard_high,61443.64,878,61450.31,2.48,9.7,skip: outside 60-150 s window
+2026-11-20 14:45:55,KXBTC15M-26NOV201000-00,NO,prev15_low,61343.41,844,61333.39,1.87,1.5,skip: outside 60-150 s window
+2026-11-20 14:45:55,KXBTC15M-26NOV201000-00,NO,prev60_low,61343.41,844,61333.39,1.87,1.5,skip: outside 60-150 s window
+2026-11-20 14:47:55,KXBTC15M-26NOV201000-00,YES,round500_high,61500.0,724,61519.42,2.38,1.0,skip: outside 60-150 s window
+2026-11-20 15:00:02,KXBTC15M-26NOV201015-15,YES,hard_high,61742.36,897,61753.35,3.1,48.9,skip: not the last 15 minutes of the hour
+2026-11-20 15:00:02,KXBTC15M-26NOV201015-15,YES,prev15_high,61743.37,897,61753.35,3.1,48.9,skip: not the last 15 minutes of the hour
+2026-11-20 15:01:31,KXBTC15M-26NOV201015-15,NO,hard_low,61654.85,808,61625.18,2.15,3.8,skip: not the last 15 minutes of the hour
+2026-11-20 15:03:01,KXBTC15M-26NOV201015-15,NO,round500_low,61500.0,718,61491.3,1.98,10.1,skip: not the last 15 minutes of the hour
+2026-11-20 15:06:28,KXBTC15M-26NOV201015-15,NO,prevday_low,61366.53,511,61342.21,1.37,6.5,skip: not the last 15 minutes of the hour
+2026-11-20 15:09:02,KXBTC15M-26NOV201015-15,NO,prev15_low,61278.92,357,61250.36,2.2,1.0,skip: not the last 15 minutes of the hour
+2026-11-20 15:09:02,KXBTC15M-26NOV201015-15,NO,prev60_low,61278.92,357,61250.36,2.2,1.0,skip: not the last 15 minutes of the hour
+2026-11-20 15:09:17,KXBTC15M-26NOV201015-15,NO,prev4h_low,61200.86,342,61175.62,2.51,1.1,skip: not the last 15 minutes of the hour
+2026-11-20 15:09:17,KXBTC15M-26NOV201015-15,NO,today_low,61200.86,342,61175.62,2.51,1.1,skip: not the last 15 minutes of the hour
