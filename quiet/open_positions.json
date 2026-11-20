@@ -1,14 +1,1 @@
-[
- {
-  "time_utc": "2026-11-20 11:56:00",
-  "ticker": "KXBTC-26NOV2007-B61750",
-  "side": "YES",
-  "mins_left": 4,
-  "contracts": 20,
-  "avg_price": 0.74,
-  "fee": 0.27,
-  "cost": 15.07,
-  "model": 0.5888,
-  "close_ts": 1795176000
- }
-]
+[]
