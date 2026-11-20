@@ -1,16 +1,16 @@
 [
  {
-  "time_utc": "2026-11-20 11:41:00",
+  "time_utc": "2026-11-20 12:45:00",
   "account": 4,
-  "ticker": "KXBTC-26NOV2007-B61950",
+  "ticker": "KXBTC-26NOV2008-B61750",
   "side": "NO",
-  "mins_left": 19,
-  "contracts": 1,
+  "mins_left": 15,
+  "contracts": 4,
   "wanted": 4,
-  "avg_price": 0.91,
-  "fee": 0.01,
-  "cost": 0.92,
-  "model": 0.9342,
-  "close_ts": 1795176000
+  "avg_price": 0.92,
+  "fee": 0.03,
+  "cost": 3.71,
+  "model": 0.9429,
+  "close_ts": 1795179600
  }
 ]
