@@ -6272,3 +6272,16 @@ break_utc,session,side,level,level_price,secs_left,brti,push,lag_s,decision
 2026-11-21 19:03:03,KXBTC15M-26NOV211415-15,YES,hard_high,60072.02,716,60113.5,4.04,2.2,skip: not the last 15 minutes of the hour
 2026-11-21 19:03:03,KXBTC15M-26NOV211415-15,YES,prev15_high,60080.04,716,60113.5,4.04,2.2,skip: not the last 15 minutes of the hour
 2026-11-21 19:03:11,KXBTC15M-26NOV211415-15,YES,prev60_high,60144.57,708,60160.27,7.19,8.0,skip: not the last 15 minutes of the hour
+2026-11-21 19:15:19,KXBTC15M-26NOV211430-30,NO,hard_low,60166.95,880,60161.85,1.95,3.8,skip: not the last 15 minutes of the hour
+2026-11-21 19:30:41,KXBTC15M-26NOV211445-45,YES,hard_high,60199.28,858,60210.2,1.86,5.5,skip: not the last 15 minutes of the hour
+2026-11-21 19:34:33,KXBTC15M-26NOV211445-45,YES,prev15_high,60216.04,626,60221.55,1.08,15.1,skip: not the last 15 minutes of the hour
+2026-11-21 19:43:44,KXBTC15M-26NOV211445-45,YES,prev60_high,60302.47,75,60311.35,1.46,0.5,skip: not the last 15 minutes of the hour
+2026-11-21 19:43:44,KXBTC15M-26NOV211445-45,YES,prev4h_high,60302.47,75,60311.35,1.46,0.5,skip: not the last 15 minutes of the hour
+2026-11-21 19:47:38,KXBTC15M-26NOV211500-00,NO,hard_low,60249.46,741,60242.43,0.48,3.5,skip: outside 60-150 s window
+2026-11-21 19:49:33,KXBTC15M-26NOV211500-00,YES,hard_high,60291.57,626,60302.67,1.54,1.1,skip: outside 60-150 s window
+2026-11-21 19:52:32,KXBTC15M-26NOV211500-00,YES,prev15_high,60311.35,447,60317.59,1.27,2.6,skip: outside 60-150 s window
+2026-11-21 19:52:32,KXBTC15M-26NOV211500-00,YES,prev60_high,60311.35,447,60317.59,1.27,2.6,skip: outside 60-150 s window
+2026-11-21 19:52:32,KXBTC15M-26NOV211500-00,YES,prev4h_high,60311.35,447,60317.59,1.27,2.6,skip: outside 60-150 s window
+2026-11-21 19:55:10,KXBTC15M-26NOV211500-00,NO,prev15_low,60166.5,289,60081.56,,12.9,skip: outside 60-150 s window
+2026-11-21 20:00:42,KXBTC15M-26NOV211515-15,NO,hard_low,60199.28,857,60193.56,0.3,1.2,skip: not the last 15 minutes of the hour
+2026-11-21 20:03:04,KXBTC15M-26NOV211515-15,YES,hard_high,60248.41,715,60257.85,1.28,3.2,skip: not the last 15 minutes of the hour
