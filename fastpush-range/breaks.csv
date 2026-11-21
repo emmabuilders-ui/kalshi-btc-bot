@@ -6022,3 +6022,15 @@ break_utc,session,side,level,level_price,secs_left,brti,push,lag_s,decision
 2026-11-21 04:03:57,KXBTC15M-26NOV202315-15,NO,prev4h_low,56345.27,662,56291.23,3.04,16.6,skip: not the last 15 minutes of the hour
 2026-11-21 04:03:57,KXBTC15M-26NOV202315-15,NO,today_low,56345.27,662,56291.23,3.04,16.6,skip: not the last 15 minutes of the hour
 2026-11-21 04:04:22,KXBTC15M-26NOV202315-15,NO,round1000_low,56000.0,637,55977.3,6.52,12.8,skip: not the last 15 minutes of the hour
+2026-11-21 04:15:32,KXBTC15M-26NOV202330-30,YES,hard_high,55857.82,867,55865.46,0.87,19.4,skip: not the last 15 minutes of the hour
+2026-11-21 04:15:46,KXBTC15M-26NOV202330-30,NO,hard_low,55767.37,853,55729.42,1.7,5.4,skip: not the last 15 minutes of the hour
+2026-11-21 04:30:44,KXBTC15M-26NOV202345-45,YES,hard_high,55737.86,855,55749.53,1.01,2.6,skip: not the last 15 minutes of the hour
+2026-11-21 04:32:18,KXBTC15M-26NOV202345-45,YES,prev15_high,55895.96,761,55909.85,0.7,8.7,skip: not the last 15 minutes of the hour
+2026-11-21 04:32:57,KXBTC15M-26NOV202345-45,YES,round1000_high,56000.0,722,56015.89,0.83,0.7,skip: not the last 15 minutes of the hour
+2026-11-21 04:32:57,KXBTC15M-26NOV202345-45,YES,round500_high,56000.0,722,56015.89,0.83,0.7,skip: not the last 15 minutes of the hour
+2026-11-21 04:45:10,KXBTC15M-26NOV210000-00,YES,hard_high,55909.44,889,55914.88,0.47,42.8,skip: outside 60-150 s window
+2026-11-21 04:46:22,KXBTC15M-26NOV210000-00,YES,round1000_high,56000.0,817,56010.43,0.84,0.4,skip: outside 60-150 s window
+2026-11-21 04:46:22,KXBTC15M-26NOV210000-00,YES,round500_high,56000.0,817,56010.43,0.84,0.4,skip: outside 60-150 s window
+2026-11-21 04:46:57,KXBTC15M-26NOV210000-00,YES,prev15_high,56128.35,782,56133.61,0.29,2.0,skip: outside 60-150 s window
+2026-11-21 05:00:29,KXBTC15M-26NOV210015-15,YES,hard_high,56335.67,870,56360.39,1.14,16.5,skip: not the last 15 minutes of the hour
+2026-11-21 05:07:06,KXBTC15M-26NOV210015-15,NO,hard_low,56192.96,473,56183.34,0.44,9.6,skip: not the last 15 minutes of the hour
