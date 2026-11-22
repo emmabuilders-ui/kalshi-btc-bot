@@ -6527,3 +6527,24 @@ break_utc,session,side,level,level_price,secs_left,brti,push,lag_s,decision
 2026-11-22 11:00:10,KXBTC15M-26NOV220615-15,NO,hard_low,60751.76,889,60743.31,1.38,31.7,skip: not the last 15 minutes of the hour
 2026-11-22 11:01:23,KXBTC15M-26NOV220615-15,YES,hard_high,60795.58,816,60802.02,0.44,1.1,skip: not the last 15 minutes of the hour
 2026-11-22 11:05:44,KXBTC15M-26NOV220615-15,YES,prevday_high,60874.44,555,60884.75,1.54,9.7,skip: not the last 15 minutes of the hour
+2026-11-22 11:17:58,KXBTC15M-26NOV220630-30,NO,hard_low,60834.31,721,60815.9,0.79,1.0,skip: not the last 15 minutes of the hour
+2026-11-22 11:26:50,KXBTC15M-26NOV220630-30,YES,prev15_high,60926.18,189,60932.35,0.37,2.6,skip: not the last 15 minutes of the hour
+2026-11-22 11:26:56,KXBTC15M-26NOV220630-30,YES,hard_high,60945.56,183,60951.88,0.83,1.0,skip: not the last 15 minutes of the hour
+2026-11-22 11:30:13,KXBTC15M-26NOV220645-45,NO,hard_low,60881.18,886,60872.65,0.94,15.6,skip: not the last 15 minutes of the hour
+2026-11-22 11:30:14,KXBTC15M-26NOV220645-45,NO,prevday_low,60874.44,885,60867.52,1.11,14.6,skip: not the last 15 minutes of the hour
+2026-11-22 11:34:05,KXBTC15M-26NOV220645-45,YES,hard_high,60939.1,654,60948.61,1.01,1.2,skip: not the last 15 minutes of the hour
+2026-11-22 11:38:41,KXBTC15M-26NOV220645-45,YES,prev15_high,60989.44,378,60998.44,0.88,0.8,skip: not the last 15 minutes of the hour
+2026-11-22 11:38:41,KXBTC15M-26NOV220645-45,YES,prev60_high,60992.76,378,60998.44,0.88,0.8,skip: not the last 15 minutes of the hour
+2026-11-22 11:46:50,KXBTC15M-26NOV220700-00,NO,hard_low,60877.08,789,60872.03,1.05,17.8,skip: outside 60-150 s window
+2026-11-22 11:46:52,KXBTC15M-26NOV220700-00,NO,prevday_low,60874.44,787,60866.41,0.83,15.8,skip: outside 60-150 s window
+2026-11-22 11:47:00,KXBTC15M-26NOV220700-00,NO,prev15_low,60864.76,779,60856.05,1.38,7.8,skip: outside 60-150 s window
+2026-11-22 11:51:37,KXBTC15M-26NOV220700-00,YES,hard_high,60939.1,502,60947.4,3.54,12.3,skip: outside 60-150 s window
+2026-11-22 11:58:44,KXBTC15M-26NOV220700-00,YES,round1000_high,61000.0,75,61006.66,2.66,6.9,skip: late by 7s
+2026-11-22 11:58:44,KXBTC15M-26NOV220700-00,YES,round500_high,61000.0,75,61006.66,2.66,6.9,skip: YES already judged this session
+2026-11-22 11:58:48,KXBTC15M-26NOV220700-00,YES,prev15_high,61004.73,71,61020.88,3.07,2.9,skip: YES already judged this session
+2026-11-22 11:58:48,KXBTC15M-26NOV220700-00,YES,prev60_high,61004.73,71,61020.88,3.07,2.9,skip: YES already judged this session
+2026-11-22 12:01:01,KXBTC15M-26NOV220715-15,YES,hard_high,61000.18,838,61009.84,2.16,7.5,skip: not the last 15 minutes of the hour
+2026-11-22 12:01:01,KXBTC15M-26NOV220715-15,YES,round1000_high,61000.0,838,61009.84,2.16,7.5,skip: not the last 15 minutes of the hour
+2026-11-22 12:01:01,KXBTC15M-26NOV220715-15,YES,round500_high,61000.0,838,61009.84,2.16,7.5,skip: not the last 15 minutes of the hour
+2026-11-22 12:01:24,KXBTC15M-26NOV220715-15,YES,prev15_high,61020.88,815,61025.99,0.96,1.9,skip: not the last 15 minutes of the hour
+2026-11-22 12:01:24,KXBTC15M-26NOV220715-15,YES,prev60_high,61020.88,815,61025.99,0.96,1.9,skip: not the last 15 minutes of the hour
