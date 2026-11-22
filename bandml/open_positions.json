@@ -1,1 +1,15 @@
-[]
+[
+ {
+  "time_utc": "2026-11-22 19:40:00",
+  "ticker": "KXBTC-26NOV2215-B60650",
+  "side": "YES",
+  "mins_left": 20,
+  "contracts": 7,
+  "avg_price": 0.39,
+  "fee": 0.12,
+  "cost": 2.85,
+  "model": 0.466,
+  "gap_pts": 5.93,
+  "close_ts": 1795377600
+ }
+]
