@@ -6837,3 +6837,15 @@ break_utc,session,side,level,level_price,secs_left,brti,push,lag_s,decision
 2026-11-23 06:03:18,KXBTC15M-26NOV230115-15,NO,prevday_low,61559.82,701,61551.76,0.92,9.4,skip: not the last 15 minutes of the hour
 2026-11-23 06:03:22,KXBTC15M-26NOV230115-15,NO,hard_low,61552.41,697,61542.04,1.33,5.4,skip: not the last 15 minutes of the hour
 2026-11-23 06:03:31,KXBTC15M-26NOV230115-15,NO,prev15_low,61539.12,688,61530.9,1.34,1.4,skip: not the last 15 minutes of the hour
+2026-11-23 06:20:09,KXBTC15M-26NOV230130-30,NO,hard_low,61587.86,590,61581.34,1.15,2.3,skip: not the last 15 minutes of the hour
+2026-11-23 06:20:28,KXBTC15M-26NOV230130-30,NO,prevday_low,61559.82,571,61548.05,1.48,12.9,skip: not the last 15 minutes of the hour
+2026-11-23 06:21:42,KXBTC15M-26NOV230130-30,NO,prev15_low,61521.63,497,61504.48,1.83,10.1,skip: not the last 15 minutes of the hour
+2026-11-23 06:21:45,KXBTC15M-26NOV230130-30,NO,round500_low,61500.0,494,61493.24,2.19,7.1,skip: not the last 15 minutes of the hour
+2026-11-23 06:30:55,KXBTC15M-26NOV230145-45,YES,hard_high,61489.19,844,61497.57,0.99,4.4,skip: not the last 15 minutes of the hour
+2026-11-23 06:31:10,KXBTC15M-26NOV230145-45,YES,round500_high,61500.0,829,61505.69,0.43,1.3,skip: not the last 15 minutes of the hour
+2026-11-23 06:32:45,KXBTC15M-26NOV230145-45,NO,hard_low,61445.4,734,61440.32,1.4,9.8,skip: not the last 15 minutes of the hour
+2026-11-23 06:34:20,KXBTC15M-26NOV230145-45,NO,prev15_low,61338.07,639,61329.3,2.54,0.7,skip: not the last 15 minutes of the hour
+2026-11-23 06:34:21,KXBTC15M-26NOV230145-45,NO,prev60_low,61334.01,638,61320.75,3.43,0.7,skip: not the last 15 minutes of the hour
+2026-11-23 06:45:18,KXBTC15M-26NOV230200-00,YES,hard_high,61445.4,881,61454.96,1.06,18.5,skip: outside 60-150 s window
+2026-11-23 06:46:08,KXBTC15M-26NOV230200-00,NO,hard_low,61400.68,831,61395.33,4.03,8.8,skip: outside 60-150 s window
+2026-11-23 07:00:09,KXBTC15M-26NOV230215-15,YES,hard_high,61400.68,890,61407.72,1.4,9.2,skip: not the last 15 minutes of the hour
