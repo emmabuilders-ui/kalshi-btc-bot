@@ -1,20 +1,20 @@
 [
  {
-  "time_utc": "2026-11-23 10:02:00",
-  "ticker": "KXBTC15M-26NOV230515-15",
-  "side": "YES",
+  "time_utc": "2026-11-23 11:02:00",
+  "ticker": "KXBTC15M-26NOV230615-15",
+  "side": "NO",
   "level": "gap only",
   "secs_left": 780,
-  "model_prob": 0.5637,
-  "gap_pts": 7.63,
+  "model_prob": 0.4652,
+  "gap_pts": 7.89,
   "contracts": 20,
-  "avg_price": 0.47,
-  "fee": 0.35,
-  "cost": 9.75,
-  "close_ts": 1795428900,
+  "avg_price": 0.37,
+  "fee": 0.33,
+  "cost": 7.73,
+  "close_ts": 1795432500,
   "result": "",
   "won": "",
   "pnl": "",
-  "pred_return_pct": 15.65
+  "pred_return_pct": 20.43
  }
 ]
