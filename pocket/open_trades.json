@@ -1,1 +1,21 @@
-[]
+[
+ {
+  "time_utc": "2026-11-24 03:02:00",
+  "ticker": "KXBTC15M-26NOV232215-15",
+  "side": "YES",
+  "level": "gap only",
+  "secs_left": 780,
+  "model_prob": 0.7132,
+  "gap_pts": 3.75,
+  "contracts": 20,
+  "avg_price": 0.66,
+  "fee": 0.32,
+  "cost": 13.52,
+  "close_ts": 1795490100,
+  "result": "",
+  "won": "",
+  "pnl": "",
+  "look_no": 1,
+  "run_no": 1
+ }
+]
