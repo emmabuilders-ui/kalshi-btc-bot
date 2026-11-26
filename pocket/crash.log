@@ -1,1 +1,3 @@
 2026-11-18 12:01:25 pid 408559 max_mem 84MB: start
+2026-11-26 06:51:07 pid 408559 max_mem 119MB: stopped by SIGTERM
+2026-11-26 06:51:36 pid 647480 max_mem 84MB: start
