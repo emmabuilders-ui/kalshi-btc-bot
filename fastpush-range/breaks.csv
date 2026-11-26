@@ -8026,3 +8026,15 @@ break_utc,session,side,level,level_price,secs_left,brti,push,lag_s,decision
 2026-11-26 04:02:54,KXBTC15M-26NOV252315-15,YES,prev15_high,60854.2,725,60861.25,1.31,0.5,skip: not the last 15 minutes of the hour
 2026-11-26 04:02:54,KXBTC15M-26NOV252315-15,YES,prev60_high,60854.2,725,60861.25,1.31,0.5,skip: not the last 15 minutes of the hour
 2026-11-26 04:15:24,KXBTC15M-26NOV252330-30,NO,hard_low,60893.12,875,60885.1,0.85,1.1,skip: not the last 15 minutes of the hour
+2026-11-26 04:26:59,KXBTC15M-26NOV252330-30,YES,hard_high,60987.95,180,60993.36,0.83,0.6,skip: not the last 15 minutes of the hour
+2026-11-26 04:40:29,KXBTC15M-26NOV252345-45,YES,hard_high,60987.95,270,60995.38,0.97,0.6,skip: not the last 15 minutes of the hour
+2026-11-26 04:40:38,KXBTC15M-26NOV252345-45,YES,prev15_high,60994.61,261,61000.02,0.7,10.6,skip: not the last 15 minutes of the hour
+2026-11-26 04:40:38,KXBTC15M-26NOV252345-45,YES,prev60_high,60994.61,261,61000.02,0.7,10.6,skip: not the last 15 minutes of the hour
+2026-11-26 04:40:39,KXBTC15M-26NOV252345-45,YES,prev4h_high,60997.03,260,61005.45,1.04,9.6,skip: not the last 15 minutes of the hour
+2026-11-26 04:40:39,KXBTC15M-26NOV252345-45,YES,round1000_high,61000.0,260,61005.45,1.04,9.6,skip: not the last 15 minutes of the hour
+2026-11-26 04:40:39,KXBTC15M-26NOV252345-45,YES,round500_high,61000.0,260,61005.45,1.04,9.6,skip: not the last 15 minutes of the hour
+2026-11-26 04:51:14,KXBTC15M-26NOV260000-00,NO,hard_low,60894.97,525,60884.65,0.81,5.6,skip: outside 60-150 s window
+2026-11-26 04:51:14,KXBTC15M-26NOV260000-00,NO,prev15_low,60892.95,525,60884.65,0.81,5.6,skip: outside 60-150 s window
+2026-11-26 05:01:19,KXBTC15M-26NOV260015-15,YES,prev15_high,60950.33,820,60957.14,1.91,9.0,skip: not the last 15 minutes of the hour
+2026-11-26 05:02:55,KXBTC15M-26NOV260015-15,NO,hard_low,60855.76,724,60848.14,1.36,9.7,skip: not the last 15 minutes of the hour
+2026-11-26 05:17:06,KXBTC15M-26NOV260030-30,YES,hard_high,60854.49,773,60868.41,1.23,15.0,skip: not the last 15 minutes of the hour
