@@ -8493,3 +8493,32 @@ break_utc,session,side,level,level_price,secs_left,brti,push,lag_s,decision
 2026-11-27 13:46:37,KXBTC15M-26NOV270900-00,YES,hard_high,61388.21,802,61400.79,1.42,4.7,skip: outside 60-150 s window
 2026-11-27 13:47:53,KXBTC15M-26NOV270900-00,YES,prev15_high,61437.86,726,61448.81,2.31,1.5,skip: outside 60-150 s window
 2026-11-27 13:49:21,KXBTC15M-26NOV270900-00,YES,prevday_high,61472.89,638,61478.59,1.06,5.3,skip: outside 60-150 s window
+2026-11-27 14:00:01,KXBTC15M-26NOV270915-15,NO,hard_low,61388.21,898,61380.24,0.95,23.9,skip: not the last 15 minutes of the hour
+2026-11-27 14:00:49,KXBTC15M-26NOV270915-15,NO,pivot_R1S1_low,61360.06,850,61352.89,2.34,4.7,skip: not the last 15 minutes of the hour
+2026-11-27 14:05:18,KXBTC15M-26NOV270915-15,YES,hard_high,61431.07,581,61436.11,1.69,5.1,skip: not the last 15 minutes of the hour
+2026-11-27 14:10:26,KXBTC15M-26NOV270915-15,NO,prev15_low,61340.13,273,61332.47,0.37,0.8,skip: not the last 15 minutes of the hour
+2026-11-27 14:15:42,KXBTC15M-26NOV270930-30,NO,hard_low,61377.06,857,61370.21,1.69,0.9,skip: not the last 15 minutes of the hour
+2026-11-27 14:18:25,KXBTC15M-26NOV270930-30,NO,pivot_R1S1_low,61360.06,694,61353.94,0.54,3.9,skip: not the last 15 minutes of the hour
+2026-11-27 14:23:01,KXBTC15M-26NOV270930-30,NO,prev15_low,61317.63,418,61307.46,1.4,11.0,skip: not the last 15 minutes of the hour
+2026-11-27 14:26:32,KXBTC15M-26NOV270930-30,NO,prev60_low,61227.35,207,61198.84,4.33,11.9,skip: not the last 15 minutes of the hour
+2026-11-27 14:26:32,KXBTC15M-26NOV270930-30,NO,prev4h_low,61227.35,207,61198.84,4.33,11.9,skip: not the last 15 minutes of the hour
+2026-11-27 14:30:02,KXBTC15M-26NOV270945-45,NO,hard_low,61330.74,897,61317.57,1.69,8.1,skip: not the last 15 minutes of the hour
+2026-11-27 14:30:25,KXBTC15M-26NOV270945-45,NO,prev15_low,61184.88,874,61147.07,7.78,5.0,skip: not the last 15 minutes of the hour
+2026-11-27 14:30:25,KXBTC15M-26NOV270945-45,NO,prev60_low,61184.88,874,61147.07,7.78,5.0,skip: not the last 15 minutes of the hour
+2026-11-27 14:30:25,KXBTC15M-26NOV270945-45,NO,prev4h_low,61184.88,874,61147.07,7.78,5.0,skip: not the last 15 minutes of the hour
+2026-11-27 14:31:07,KXBTC15M-26NOV270945-45,NO,round1000_low,61000.0,832,60992.94,6.32,12.2,skip: not the last 15 minutes of the hour
+2026-11-27 14:31:07,KXBTC15M-26NOV270945-45,NO,round500_low,61000.0,832,60992.94,6.32,12.2,skip: not the last 15 minutes of the hour
+2026-11-27 14:34:43,KXBTC15M-26NOV270945-45,NO,pivot_P_low,60606.33,616,60597.17,5.33,1.5,skip: not the last 15 minutes of the hour
+2026-11-27 14:38:11,KXBTC15M-26NOV270945-45,NO,day_open_low,60493.48,408,60472.5,3.75,5.2,skip: not the last 15 minutes of the hour
+2026-11-27 14:38:59,KXBTC15M-26NOV270945-45,NO,today_low,60395.97,360,60384.21,4.65,0.7,skip: not the last 15 minutes of the hour
+2026-11-27 14:42:15,KXBTC15M-26NOV270945-45,NO,prevday_low,59852.61,164,59824.48,4.92,6.7,skip: not the last 15 minutes of the hour
+2026-11-27 14:45:01,KXBTC15M-26NOV271000-00,YES,hard_high,60170.44,898,60182.9,1.98,40.3,skip: outside 60-150 s window
+2026-11-27 14:45:33,KXBTC15M-26NOV271000-00,NO,hard_low,60057.41,866,60052.15,2.71,8.3,skip: outside 60-150 s window
+2026-11-27 14:46:06,KXBTC15M-26NOV271000-00,NO,round1000_low,60000.0,833,59964.14,2.05,0.7,skip: outside 60-150 s window
+2026-11-27 14:46:06,KXBTC15M-26NOV271000-00,NO,round500_low,60000.0,833,59964.14,2.05,0.7,skip: outside 60-150 s window
+2026-11-27 14:46:12,KXBTC15M-26NOV271000-00,NO,prevday_low,59852.61,827,59841.09,5.31,4.5,skip: outside 60-150 s window
+2026-11-27 14:46:54,KXBTC15M-26NOV271000-00,NO,prev15_low,59768.43,785,59748.97,3.14,12.0,skip: outside 60-150 s window
+2026-11-27 14:46:54,KXBTC15M-26NOV271000-00,NO,prev60_low,59768.43,785,59748.97,3.14,12.0,skip: outside 60-150 s window
+2026-11-27 14:46:54,KXBTC15M-26NOV271000-00,NO,prev4h_low,59768.43,785,59748.97,3.14,12.0,skip: outside 60-150 s window
+2026-11-27 14:46:54,KXBTC15M-26NOV271000-00,NO,today_low,59768.43,785,59748.97,3.14,12.0,skip: outside 60-150 s window
+2026-11-27 14:46:55,KXBTC15M-26NOV271000-00,NO,pivot_R1S1_low,59739.78,784,59699.84,4.95,11.0,skip: outside 60-150 s window
