@@ -1,1 +1,16 @@
-[]
+[
+ {
+  "time_utc": "2026-11-27 16:36:00",
+  "account": 4,
+  "ticker": "KXBTC-26NOV2712-B60250",
+  "side": "NO",
+  "mins_left": 24,
+  "contracts": 4,
+  "wanted": 4,
+  "avg_price": 0.9,
+  "fee": 0.03,
+  "cost": 3.63,
+  "model": 0.923,
+  "close_ts": 1795798800
+ }
+]
