@@ -1,15 +1,15 @@
 [
  {
-  "time_utc": "2026-11-28 10:51:00",
-  "ticker": "KXBTC-26NOV2806-B59150",
+  "time_utc": "2026-11-28 11:48:00",
+  "ticker": "KXBTC-26NOV2807-B59150",
   "side": "YES",
-  "mins_left": 9,
-  "contracts": 10,
-  "avg_price": 0.41,
-  "fee": 0.17,
-  "cost": 4.27,
-  "model": 0.5045,
-  "gap_pts": 7.76,
-  "close_ts": 1795863600
+  "mins_left": 12,
+  "contracts": 3,
+  "avg_price": 0.52,
+  "fee": 0.06,
+  "cost": 1.62,
+  "model": 0.603,
+  "gap_pts": 6.55,
+  "close_ts": 1795867200
  }
 ]
