@@ -5964,3 +5964,16 @@ time_utc,ticker,secs_left,brti,strike,locked_avg,prints_known,settle_mean,sigma_
 2026-11-28 14:44:30,KXBTC15M-26NOV280945-45,30,,59238.11,,,,,,,,,,,,,,lock-in at 30 s,10,skip: check is 10s late (limit 4s),,
 2026-11-28 14:44:40,KXBTC15M-26NOV280945-45,20,59282.76,59238.11,59270.08,41,59274.09,6.298e-05,100.0,0.999,,,0.001,,-0.11,,,lock-in at 20 s,0,no trade (favoured side has no 5-point edge),,
 2026-11-28 14:44:50,KXBTC15M-26NOV280945-45,10,,59238.11,,,,,,,,,,,,,,lock-in at 10 s,7,skip: check is 7s late (limit 4s),,
+2026-11-28 14:59:10,KXBTC15M-26NOV281000-00,50,,59270.82,,,,,,,,,,,,,,lock-in at 50 s,8,skip: check is 8s late (limit 4s),,
+2026-11-28 14:59:20,KXBTC15M-26NOV281000-00,40,,59270.82,,,,,,,,,,,,,,lock-in at 40 s,12,skip: check is 12s late (limit 4s),,
+2026-11-28 14:59:30,KXBTC15M-26NOV281000-00,30,59267.32,59270.82,59257.2,31,59262.09,5.949e-05,5.42,0.25,0.26,0.74,0.75,-21.93,18.27,NO,0.75,lock-in at 30 s,2,BUY NO,20,0.75
+2026-11-28 15:14:10,KXBTC15M-26NOV281015-15,50,,59264.75,,,,,,,,,,,,,,lock-in at 50 s,10,skip: check is 10s late (limit 4s),,
+2026-11-28 15:14:20,KXBTC15M-26NOV281015-15,40,59327.73,59264.75,59326.62,21,59327.34,4.837e-05,100.0,0.999,,,0.001,,-0.11,,,lock-in at 40 s,0,no trade (favoured side has no 5-point edge),,
+2026-11-28 15:14:30,KXBTC15M-26NOV281015-15,30,59310.41,59264.75,59322.58,31,59316.7,4.849e-05,100.0,0.999,,,0.001,,-0.11,,,lock-in at 30 s,0,no trade (favoured side has no 5-point edge),,
+2026-11-28 15:14:40,KXBTC15M-26NOV281015-15,20,59324.14,59264.75,59322.24,41,59322.84,4.802e-05,100.0,0.999,,,0.001,,-0.11,,,lock-in at 20 s,0,no trade (favoured side has no 5-point edge),,
+2026-11-28 15:14:50,KXBTC15M-26NOV281015-15,10,59322.87,59264.75,59322.28,51,59322.37,4.803e-05,100.0,0.999,,,0.001,,-0.11,,,lock-in at 10 s,2,no trade (favoured side has no 5-point edge),,
+2026-11-28 15:29:10,KXBTC15M-26NOV281030-30,50,59245.76,59322.49,59247.18,11,59246.02,4.579e-05,0.0,,0.001,0.999,,-0.11,,,,lock-in at 50 s,0,no trade (favoured side has no 5-point edge),,
+2026-11-28 15:29:20,KXBTC15M-26NOV281030-30,40,59244.74,59322.49,59246.03,21,59245.19,4.58e-05,0.0,,0.001,0.999,,-0.11,,,,lock-in at 40 s,0,no trade (favoured side has no 5-point edge),,
+2026-11-28 15:29:30,KXBTC15M-26NOV281030-30,30,,59322.49,,,,,,,,,,,,,,lock-in at 30 s,7,skip: check is 7s late (limit 4s),,
+2026-11-28 15:44:10,KXBTC15M-26NOV281045-45,50,59246.92,59249.59,59241.27,11,59245.88,4.299e-05,33.2,0.19,0.2,0.8,0.81,12.08,-15.28,,,lock-in at 50 s,0,no trade (favoured side has no 5-point edge),,
+2026-11-28 15:44:20,KXBTC15M-26NOV281045-45,40,59249.16,59249.59,59244.53,21,59247.54,4.302e-05,36.82,0.57,0.58,0.42,0.43,-22.89,18.46,NO,0.43,lock-in at 40 s,4,BUY NO,20,0.43
